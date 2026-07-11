@@ -144,6 +144,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Project-local generated files
+fine-tuning/query_plans/ckpt/
+optimization/query_plans/.venv/
+
 # Spyder project settings
 .spyderproject
 .spyproject

@@ -1,3 +1,4 @@
+import argparse
 import pandas as pd
 import ast
 import json
@@ -14,9 +15,20 @@ sample_prompt = {
     ]
 }
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Convert peptide train CSV into OpenAI/torchtune chat JSONL."
+    )
+    parser.add_argument("--data-path", default="./train_data/train_data.csv")
+    parser.add_argument("--save-path", default="./train_data/train_data.jsonl")
+    return parser.parse_args()
+
+
+args = parse_args()
+
 # Placeholders
-save_path = "./train_data/train_data.jsonl"
-data_path = "./train_data/train_data.csv"
+save_path = args.save_path
+data_path = args.data_path
 
 # Ensure directory exists
 os.makedirs(os.path.dirname(save_path), exist_ok=True)

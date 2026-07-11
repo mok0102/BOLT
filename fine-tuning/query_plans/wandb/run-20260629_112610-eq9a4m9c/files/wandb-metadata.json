@@ -1,0 +1,20 @@
+{
+  "os": "Linux-5.15.0-82-generic-x86_64-with-glibc2.35",
+  "python": "CPython 3.11.5",
+  "startedAt": "2026-06-29T11:26:10.003781Z",
+  "args": [
+    "--config",
+    "torchtune_config/qwen_2_5_7B_full.yaml"
+  ],
+  "program": "/home/mok/module/steering/BOLT/optimization/query_plans/.venv/lib/python3.11/site-packages/recipes/full_finetune_distributed.py",
+  "codePath": "optimization/query_plans/.venv/lib/python3.11/site-packages/recipes/full_finetune_distributed.py",
+  "git": {
+    "remote": "https://github.com/Yimeng-Zeng/BOLT.git",
+    "commit": "a164b7942fcbbe29eca9c0a99c939f0c7bf70995"
+  },
+  "email": "jungmok@postech.ac.kr",
+  "root": "/home/mok/module/steering/BOLT/fine-tuning/query_plans",
+  "host": "gpu08",
+  "executable": "/home/mok/module/steering/BOLT/optimization/query_plans/.venv/bin/python3",
+  "writerId": "wg3pau349yma53oecxx7xy6q0rictnep"
+}

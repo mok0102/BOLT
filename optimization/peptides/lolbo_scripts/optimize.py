@@ -26,6 +26,8 @@ except ModuleNotFoundError:
 
 warnings.filterwarnings("ignore")
 
+
+
 os.environ["WANDB_SILENT"] = "True"
 
 
@@ -60,6 +62,7 @@ class Optimize:
         track_with_wandb: bool = False,
         wandb_entity: str = "anonymous",
         wandb_project_name: str = "",
+        wandb_run_name: str | None = None,
         wandb_run_tags: list | None = None,
         minimize: bool = False,
         max_n_oracle_calls: int = 200_000_000_000,
@@ -90,6 +93,7 @@ class Optimize:
         self.seed = seed
         self.track_with_wandb = track_with_wandb
         self.wandb_entity = wandb_entity
+        self.requested_wandb_run_name = wandb_run_name
         self.task_id = task_id
         self.max_n_oracle_calls = max_n_oracle_calls
         self.verbose = verbose
@@ -197,11 +201,12 @@ class Optimize:
                 entity=self.wandb_entity,
                 config=config_dict,
                 tags=self.wandb_run_tags,
+                name=self.requested_wandb_run_name,
             )
-            self.wandb_run_name = wandb.run.name
+            self.wandb_run_name = self.tracker.name
         else:
             self.tracker = None
-            self.wandb_run_name = "no-wandb-tracking"
+            self.wandb_run_name = self.requested_wandb_run_name or "no-wandb-tracking"
 
         return self
 
@@ -265,7 +270,8 @@ class Optimize:
         # log top k scores and xs in table
         self.final_save = True
         self.log_topk_table_wandb()
-        self.tracker.finish()
+        if self.tracker is not None:
+            self.tracker.finish()
 
         return self
 
@@ -277,7 +283,7 @@ class Optimize:
         More print statements can be added her as desired
         """
         if self.track_with_wandb:
-            print(f"Optimization Run: {self.wandb_project_name}, {wandb.run.name}")
+            print(f"Optimization Run: {self.wandb_project_name}, {self.wandb_run_name}")
         print(f"Best X Found: {self.lolbo_state.best_x_seen}")
         print(
             f"Best {self.objective.task_id} Score: {self.lolbo_state.best_score_seen}"
@@ -294,7 +300,8 @@ class Optimize:
         self.final_save = True
         self.log_topk_table_wandb()
         print("Now terminating wandb tracker...")
-        self.tracker.finish()
+        if self.tracker is not None:
+            self.tracker.finish()
         msg = "Data now saved and tracker terminated, now exiting..."
         print(msg, end="", flush=True)
         exit(1)
@@ -303,6 +310,7 @@ class Optimize:
         """After optimization finishes, log
         top k inputs and scores found
         during optimization"""
+        run_name = getattr(self, "wandb_run_name", "no-wandb-tracking")
         if self.track_with_wandb and self.final_save:
             # save top k xs and ys
             cols = ["Top K Scores", "Top K Strings"]
@@ -336,7 +344,7 @@ class Optimize:
                 save_dir
                 + self.wandb_project_name
                 + "_"
-                + wandb.run.name
+                + run_name
                 + f"_finedtuned_vae_state_after_{n_calls}evals.pkl"
             )
             torch.save(model.state_dict(), model_save_path)
@@ -348,7 +356,7 @@ class Optimize:
             save_dir
             + self.wandb_project_name
             + "_"
-            + wandb.run.name
+            + run_name
             + "_all-data-collected.csv"
         )
         df = {}

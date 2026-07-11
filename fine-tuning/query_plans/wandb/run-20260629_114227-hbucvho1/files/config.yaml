@@ -1,0 +1,197 @@
+_wandb:
+    value:
+        cli_version: 0.28.0
+        e:
+            xx8j16e0dkkxu7fpizjo5dbxmgf8ccrr:
+                args:
+                    - --config
+                    - torchtune_config/qwen_2_5_7B_full.yaml
+                codePath: optimization/query_plans/.venv/lib/python3.11/site-packages/recipes/full_finetune_distributed.py
+                cpu_count: 128
+                cpu_count_logical: 128
+                cudaVersion: "12.2"
+                disk:
+                    /:
+                        total: "7536559906816"
+                        used: "6979927261184"
+                email: jungmok@postech.ac.kr
+                executable: /home/mok/module/steering/BOLT/optimization/query_plans/.venv/bin/python3
+                git:
+                    commit: a164b7942fcbbe29eca9c0a99c939f0c7bf70995
+                    remote: https://github.com/Yimeng-Zeng/BOLT.git
+                gpu: NVIDIA A100-SXM4-80GB
+                gpu_count: 8
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-50e8499b-d30c-5fb6-49f1-baba1348fc58
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-d494e7d7-bb67-d3a2-0b2e-eeacb465bb4e
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-d6735f37-8e55-ae11-0763-2e02827ebd9b
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-79e19e17-47d2-e677-e5bb-0fb90c4395bd
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-7531ce03-b33d-6808-e7c9-6c97fc4a1a03
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-2191a949-be85-d8e7-4282-0b6988c56b65
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-545a89ed-fcc1-a3ad-af35-6514e4dc7b50
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100-SXM4-80GB
+                      uuid: GPU-6ca24ba2-a1cf-b4b7-6d59-b1f7a5f9a7f1
+                host: gpu08
+                memory:
+                    total: "2151674359808"
+                os: Linux-5.15.0-82-generic-x86_64-with-glibc2.35
+                program: /home/mok/module/steering/BOLT/optimization/query_plans/.venv/lib/python3.11/site-packages/recipes/full_finetune_distributed.py
+                python: CPython 3.11.5
+                root: /home/mok/module/steering/BOLT/fine-tuning/query_plans
+                startedAt: "2026-06-29T11:42:27.962360Z"
+                writerId: xx8j16e0dkkxu7fpizjo5dbxmgf8ccrr
+        m:
+            - "1": global_step
+              "6":
+                - 3
+              "7": []
+            - "2": '*'
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.11.5
+        t:
+            "1":
+                - 1
+                - 49
+                - 51
+            "2":
+                - 1
+                - 49
+                - 51
+            "3":
+                - 3
+                - 7
+                - 66
+            "4": 3.11.5
+            "5": 0.28.0
+            "9":
+                "2": torchtune
+            "12": 0.28.0
+            "13": linux-x86_64
+batch_size:
+    value: 4
+checkpointer:
+    value:
+        _component_: torchtune.training.FullModelHFCheckpointer
+        checkpoint_dir: /home/mok/module/steering/BOLT/fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct
+        checkpoint_files:
+            - model-00001-of-00002.safetensors
+            - model-00002-of-00002.safetensors
+        model_type: QWEN2
+        output_dir: /tmp/qwen_2_5_7B_output
+        recipe_checkpoint: null
+clip_grad_norm:
+    value: null
+compile:
+    value: false
+dataset:
+    value:
+        _component_: torchtune.datasets.chat_dataset
+        conversation_column: messages
+        conversation_style: openai
+        data_files: data/example_finetuning_data.jsonl
+        packed: false
+        source: json
+        split: train
+        train_on_input: false
+device:
+    value: cuda
+dtype:
+    value: bf16
+enable_activation_checkpointing:
+    value: true
+enable_activation_offloading:
+    value: true
+epochs:
+    value: 5
+gradient_accumulation_steps:
+    value: 1
+log_every_n_steps:
+    value: 1
+log_peak_memory_stats:
+    value: false
+loss:
+    value:
+        _component_: torchtune.modules.loss.CEWithChunkedOutputLoss
+lr_scheduler:
+    value:
+        _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
+        num_warmup_steps: 20
+max_steps_per_epoch:
+    value: null
+metric_logger:
+    value:
+        _component_: torchtune.training.metric_logging.WandBLogger
+        project: torchtune
+model:
+    value:
+        _component_: torchtune.models.qwen2_5.qwen2_5_7b_base
+optimizer:
+    value:
+        _component_: torch.optim.AdamW
+        fused: true
+        lr: 1e-05
+optimizer_in_bwd:
+    value: false
+output_dir:
+    value: /tmp/qwen_2_5_7B_output
+profiler:
+    value:
+        _component_: torchtune.training.setup_torch_profiler
+        active_steps: 2
+        cpu: true
+        cuda: true
+        enabled: false
+        num_cycles: 1
+        output_dir: /tmp/qwen_2_5_7B_output/profiling_outputs
+        profile_memory: false
+        record_shapes: true
+        wait_steps: 5
+        warmup_steps: 3
+        with_flops: false
+        with_stack: false
+resume_from_checkpoint:
+    value: false
+seed:
+    value: null
+shuffle:
+    value: true
+tokenizer:
+    value:
+        _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
+        max_seq_len: null
+        merges_file: /home/mok/module/steering/BOLT/fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct/merges.txt
+        path: /home/mok/module/steering/BOLT/fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct/vocab.json
