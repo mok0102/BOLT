@@ -33,7 +33,7 @@ do
     cd /home/mok/module/steering/BOLT/optimization/peptides/lolbo_scripts
     CUDA_VISIBLE_DEVICES="1" python info_transformer_vae_optimization.py \
         --task_id "apex" \
-        --max_n_oracle_calls 5000 \
+        --max_n_oracle_calls 50000 \
         --bsz 50 \
         --constraint_function_ids "[similarity]" \
         --constraint_thresholds "[0.75]" \

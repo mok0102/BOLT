@@ -6,7 +6,7 @@ cd /home/mok/module/steering/BOLT
 
 BASE_CKPT_DIR="/home/mok/module/steering/BOLT/fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct"
 
-list="1 2"  #3 4 5
+list="0 1 2"  #3 4 5
 for var in $list
 do
     echo "conducting $var -th task now"
@@ -14,7 +14,7 @@ do
     ##### SAMPLE AT FINE-TUNED LLM
     cd /home/mok/module/steering/BOLT/fine-tuning/peptides
     if [ "$var" -eq 0 ]; then
-        #### 첫 pi 0는 여기서 준거쓰기. pi 0가 튜닝 안했다고 생각하면 진짜 잘 안됨
+        #### 첫 pi_0는 여기서 준거쓰기. pi_0가 튜닝 안했다고 생각하면 진짜 잘 안됨
         cp /home/mok/module/steering/BOLT/optimization/peptides/apex_oracle/init_data/seed_0_init.txt /home/mok/module/steering/BOLT/fine-tuning/peptides/sampled_output_from_ft/task_${var}_init.txt
         cp /home/mok/module/steering/BOLT/optimization/peptides/apex_oracle/init_data/seed_0_scores.csv /home/mok/module/steering/BOLT/fine-tuning/peptides/sampled_output_from_ft/task_${var}_scores.csv
     else
@@ -38,7 +38,7 @@ do
     cd /home/mok/module/steering/BOLT/optimization/peptides/lolbo_scripts
     CUDA_VISIBLE_DEVICES="1" python info_transformer_vae_optimization.py \
         --task_id "apex" \
-        --max_n_oracle_calls 5000 \
+        --max_n_oracle_calls 50000 \
         --bsz 50 \
         --constraint_function_ids "[similarity]" \
         --constraint_thresholds "[0.75]" \
