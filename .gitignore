@@ -148,6 +148,17 @@ venv.bak/
 fine-tuning/query_plans/ckpt/
 optimization/query_plans/.venv/
 
+# Peptide pipeline generated files
+fine-tuning/peptides/output/
+fine-tuning/peptides/wandb/
+fine-tuning/peptides/torchtune_config/wandb/
+fine-tuning/peptides/train_data/*.csv
+fine-tuning/peptides/train_data/*.jsonl
+fine-tuning/peptides/sampled_output_from_ft/*.csv
+fine-tuning/peptides/sampled_output_from_ft/*.txt
+fine-tuning/peptides/sampled_output_from_ft/*.jsonl
+optimization/peptides/lolbo_scripts/optimization_all_collected_data/
+
 # Spyder project settings
 .spyderproject
 .spyproject

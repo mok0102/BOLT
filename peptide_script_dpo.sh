@@ -87,13 +87,13 @@ do
         --output-jsonl "$DPO_JSONL"
 
     ##### TRAIN ON FINE-TUNING DATASET
-    SFT_CKPT_DIR="/home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_sft_output_${var}"
-    DPO_CKPT_DIR="/home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_dpo_output_${var}"
+    SFT_CKPT_DIR="/home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_lora_sft_output_${var}"
+    DPO_CKPT_DIR="/home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_lora_dpo_output_${var}"
     
     ##### SFT
-    CUDA_VISIBLE_DEVICES=1 tune run --nnodes 1 --nproc_per_node 1 full_finetune_distributed --config torchtune_config/qwen_2_5_3B_full.yaml output_dir="$SFT_CKPT_DIR" dataset.data_files="$SFT_JSONL"
+    CUDA_VISIBLE_DEVICES=1 tune run --nnodes 1 --nproc_per_node 1 lora_finetune_distributed --config torchtune_config/qwen_2_5_3B_lora.yaml output_dir="$SFT_CKPT_DIR" dataset.data_files="$SFT_JSONL"
 
     ##### DPO
-    CUDA_VISIBLE_DEVICES=1 tune run --nnodes 1 --nproc_per_node 1 full_dpo_distributed --config torchtune_config/qwen_2_5_3B_dpo.yaml output_dir="$DPO_CKPT_DIR" checkpointer.checkpoint_dir="$SFT_CKPT_DIR/epoch_4" dataset.data_files="$DPO_JSONL"
+    CUDA_VISIBLE_DEVICES=1 tune run --nnodes 1 --nproc_per_node 1 lora_dpo_distributed --config torchtune_config/qwen_2_5_3B_lora_dpo.yaml output_dir="$DPO_CKPT_DIR" checkpointer.checkpoint_dir="$SFT_CKPT_DIR/epoch_4" dataset.data_files="$DPO_JSONL"
     LAST_MODEL_PATH="$DPO_CKPT_DIR/epoch_0"
 done

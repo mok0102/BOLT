@@ -19,7 +19,7 @@ do
         cp /home/mok/module/steering/BOLT/optimization/peptides/apex_oracle/init_data/seed_0_scores.csv /home/mok/module/steering/BOLT/fine-tuning/peptides/sampled_output_from_ft/task_${var}_scores.csv
     else
         PREV_VAR=$((var - 1))
-        SAMPLE_MODEL_PATH="/home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_output_${PREV_VAR}/epoch_4"
+        SAMPLE_MODEL_PATH="/home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_lora_output_${PREV_VAR}/epoch_4"
         if [ ! -d "$SAMPLE_MODEL_PATH" ]; then
             echo "Missing sampling model checkpoint: $SAMPLE_MODEL_PATH" >&2
             exit 1
@@ -75,10 +75,8 @@ do
         --save-path "$TRAIN_JSONL"
 
     ##### TRAIN ON FINE-TUNING DATASET
-    PEPTIDE_CKPT_DIR="/home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_output_${var}"
+    PEPTIDE_CKPT_DIR="/home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_lora_output_${var}"
     
     ##### SFT
-    CUDA_VISIBLE_DEVICES=1 tune run --nnodes 1 --nproc_per_node 1 full_finetune_distributed --config torchtune_config/qwen_2_5_3B_full.yaml output_dir="$PEPTIDE_CKPT_DIR" dataset.data_files="$TRAIN_JSONL" ### 학습할때도 모든 task 다 쓰고
-    ##### DPO
-    # CUDA_VISIBLE_DEVICES=1 tune run --nnodes 1 --nproc_per_node 2 full_dpo_distributed --config torchtune_config/qwen_2_5_3B_full.yaml --output_dir /home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_output_$var
+    CUDA_VISIBLE_DEVICES=1 tune run --nnodes 1 --nproc_per_node 1 lora_finetune_distributed --config torchtune_config/qwen_2_5_3B_lora.yaml output_dir="$PEPTIDE_CKPT_DIR" dataset.data_files="$TRAIN_JSONL" ### 학습할때도 모든 task 다 쓰고
 done
