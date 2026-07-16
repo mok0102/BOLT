@@ -443,8 +443,7 @@ class LOLBOState:
         )
         if self.objective.similarity is not None:
             # We need to get the GP lengthscales
-            ls = self.model.get_lengthscales()
-            breakpoint()
+            _ = self.model.get_lengthscales()
 
         # 2. Evaluate the batch of candidates by calling oracle
         with torch.no_grad():

@@ -1,0 +1,71 @@
+output_dir: /home/mok/module/steering/BOLT/fine-tuning/peptides/output/qwen_2_5_3B_lora_dpo_output
+
+tokenizer:
+  _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
+  path: /home/mok/module/steering/BOLT/fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct/vocab.json
+  merges_file: /home/mok/module/steering/BOLT/fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct/merges.txt
+  max_seq_len: null
+
+dataset:
+  _component_: torchtune.datasets.preference_dataset
+  source: json
+  data_files: /home/mok/module/steering/BOLT/fine-tuning/peptides/train_data/dpo_train_data.jsonl
+  split: train
+  train_on_input: false
+
+model:
+  _component_: torchtune.models.qwen2_5.lora_qwen2_5_3b
+  lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
+  apply_lora_to_mlp: true
+  apply_lora_to_output: false
+  lora_rank: 8
+  lora_alpha: 16
+  lora_dropout: 0.0
+
+checkpointer:
+  _component_: torchtune.training.FullModelHFCheckpointer
+  checkpoint_dir: /home/mok/module/steering/BOLT/fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct
+  checkpoint_files: [
+    model-00001-of-00002.safetensors,
+    model-00002-of-00002.safetensors,
+  ]
+  recipe_checkpoint: null
+  output_dir: ${output_dir}
+  model_type: QWEN2
+
+resume_from_checkpoint: false
+save_adapter_weights_only: false
+seed: null
+shuffle: true
+batch_size: 4
+epochs: 5
+
+optimizer:
+  _component_: torch.optim.AdamW
+  fused: true
+  weight_decay: 0.05
+  lr: 5.0e-5
+
+lr_scheduler:
+  _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
+  num_warmup_steps: 20
+
+loss:
+  _component_: torchtune.rlhf.loss.DPOLoss
+  beta: 0.1
+  label_smoothing: 0
+
+max_steps_per_epoch: null
+gradient_accumulation_steps: 1
+compile: false
+
+device: cuda
+dtype: bf16
+enable_activation_checkpointing: true
+enable_activation_offloading: true
+
+metric_logger:
+  _component_: torchtune.training.metric_logging.WandBLogger
+  project: torchtune
+log_every_n_steps: 1
+log_peak_memory_stats: false

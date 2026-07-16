@@ -6,6 +6,16 @@ import torch
 
 import os
 import sys
+import builtins
+import pdb
+
+os.environ.setdefault("PYTHONBREAKPOINT", "0")
+os.environ.setdefault("PAGER", "cat")
+os.environ.setdefault("MANPAGER", "cat")
+os.environ.setdefault("LESS", "-F -X")
+
+builtins.breakpoint = lambda *args, **kwargs: None
+pdb.set_trace = lambda *args, **kwargs: None
 
 file_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(file_dir)

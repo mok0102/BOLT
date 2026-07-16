@@ -8,6 +8,8 @@ from pathlib import Path
 
 REFERENCE_SEQUENCE = "RRYYEQLEQASRKGNRGFRR"
 DEFAULT_NUM_PAIRS = 1000
+MAX_MUTATION_DISTANCE = 0.25
+MIN_SCORE_GAP = 25.0
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_INPUT_CSV = (
@@ -25,7 +27,7 @@ SYSTEM_PROMPT = (
     "You are a specialized assistant that modifies peptide sequences to enhance "
     "antimicrobial activity. Make up to 25% sequence modifications based on known "
     "antimicrobial peptide properties such as: positive charge, hydrophobicity, "
-    "and amphipathicity."
+    "and amphipathicity. Respond with only the peptide sequence."
 )
 
 PANDAS_DEFAULT_NA_TOKENS = {
@@ -68,9 +70,34 @@ def load_reference_sequence(reference_index: int) -> str:
     return reference_sequences[reference_index]
 
 
-def load_scored_sequences(input_csv: Path) -> list[tuple[str, float]]:
+def edit_distance(first: str, second: str) -> int:
+    if len(first) < len(second):
+        first, second = second, first
+
+    previous_row = list(range(len(second) + 1))
+    for i, first_char in enumerate(first, start=1):
+        current_row = [i]
+        for j, second_char in enumerate(second, start=1):
+            insertion = current_row[j - 1] + 1
+            deletion = previous_row[j] + 1
+            substitution = previous_row[j - 1] + (first_char != second_char)
+            current_row.append(min(insertion, deletion, substitution))
+        previous_row = current_row
+    return previous_row[-1]
+
+
+def mutation_distance(sequence: str, reference_sequence: str) -> float:
+    return edit_distance(sequence, reference_sequence) / len(reference_sequence)
+
+
+def load_scored_sequences(
+    input_csv: Path,
+    reference_sequence: str,
+    max_mutation_distance: float,
+) -> list[tuple[str, float, float]]:
     scored_sequences = []
     rows_skipped = 0
+    invalid_for_pairing = 0
 
     with input_csv.open(newline="") as f_in:
         reader = csv.DictReader(f_in)
@@ -93,14 +120,22 @@ def load_scored_sequences(input_csv: Path) -> list[tuple[str, float]]:
                 rows_skipped += 1
                 continue
 
-            scored_sequences.append((sequence, score))
+            distance = mutation_distance(sequence, reference_sequence)
+            if len(sequence) != len(reference_sequence) or distance > max_mutation_distance:
+                invalid_for_pairing += 1
+
+            scored_sequences.append((sequence, score, distance))
 
     if len(scored_sequences) < 2:
-        raise ValueError(f"Need at least 2 scored sequences in {input_csv}")
+        raise ValueError(
+            f"Need at least 2 scored sequences within mutation distance "
+            f"{max_mutation_distance} in {input_csv}"
+        )
 
     print(f"Input CSV: {input_csv}")
     print(f"  Loaded sequences: {len(scored_sequences)}")
     print(f"  Rows skipped: {rows_skipped}")
+    print(f"  Rows invalid for DPO pairing: {invalid_for_pairing}")
     return scored_sequences
 
 
@@ -113,30 +148,48 @@ def make_messages(reference_sequence: str, assistant_sequence: str) -> list[dict
 
 
 def sample_pairs(
-    scored_sequences: list[tuple[str, float]],
+    scored_sequences: list[tuple[str, float, float]],
     reference_sequence: str,
     num_pairs: int,
     rng: random.Random,
+    min_score_gap: float,
+    max_mutation_distance: float,
 ) -> list[dict]:
     pairs = []
     attempts = 0
-    max_attempts = max(num_pairs * 20, 100)
+    max_attempts = max(num_pairs * 200, 1000)
+    valid_candidates = [
+        scored_sequence
+        for scored_sequence in scored_sequences
+        if len(scored_sequence[0]) == len(reference_sequence)
+        and scored_sequence[2] <= max_mutation_distance
+    ]
+
+    if len(valid_candidates) < 2:
+        raise ValueError(
+            f"Need at least 2 DPO candidates with same length as the reference "
+            f"and mutation distance <= {max_mutation_distance}."
+        )
 
     while len(pairs) < num_pairs and attempts < max_attempts:
         attempts += 1
-        first, second = rng.sample(scored_sequences, 2)
-        first_sequence, first_score = first
-        second_sequence, second_score = second
+        first, second = rng.sample(valid_candidates, 2)
+        first_sequence, first_score, first_distance = first
+        second_sequence, second_score, second_distance = second
 
         if first_score == second_score:
             continue
 
         if first_score > second_score:
-            chosen_sequence, chosen_score = first_sequence, first_score
-            rejected_sequence, rejected_score = second_sequence, second_score
+            chosen_sequence, chosen_score, chosen_distance = first
+            rejected_sequence, rejected_score, rejected_distance = second
         else:
-            chosen_sequence, chosen_score = second_sequence, second_score
-            rejected_sequence, rejected_score = first_sequence, first_score
+            chosen_sequence, chosen_score, chosen_distance = second
+            rejected_sequence, rejected_score, rejected_distance = first
+
+        score_gap = chosen_score - rejected_score
+        if score_gap < min_score_gap:
+            continue
 
         pairs.append(
             {
@@ -145,6 +198,9 @@ def sample_pairs(
                 "rejected_sequence": rejected_sequence,
                 "chosen_score": chosen_score,
                 "rejected_score": rejected_score,
+                "score_gap": score_gap,
+                "chosen_mutation_distance": chosen_distance,
+                "rejected_mutation_distance": rejected_distance,
                 "chosen": make_messages(reference_sequence, chosen_sequence),
                 "rejected": make_messages(reference_sequence, rejected_sequence),
             }
@@ -153,7 +209,10 @@ def sample_pairs(
     if len(pairs) < num_pairs:
         raise ValueError(
             f"Could only create {len(pairs)} pairs out of requested {num_pairs}. "
-            "Too many tied scores may be present."
+            f"Too many tied scores or pairs with score gap below {min_score_gap} "
+            f"may be present. Both chosen and rejected candidates are restricted "
+            f"to same length as the reference and mutation distance <= "
+            f"{max_mutation_distance}."
         )
     return pairs
 
@@ -166,6 +225,9 @@ def write_csv(pairs: list[dict], output_csv: Path) -> None:
         "rejected_sequence",
         "chosen_score",
         "rejected_score",
+        "score_gap",
+        "chosen_mutation_distance",
+        "rejected_mutation_distance",
     ]
     with output_csv.open("w", newline="") as f_out:
         writer = csv.DictWriter(f_out, fieldnames=fieldnames)
@@ -211,6 +273,18 @@ def parse_args() -> argparse.Namespace:
         help="Random DPO pairs to sample from each input CSV.",
     )
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--max-mutation-distance",
+        type=float,
+        default=MAX_MUTATION_DISTANCE,
+        help="Keep only sequences with edit_distance(sequence, reference) / len(reference) at or below this value.",
+    )
+    parser.add_argument(
+        "--min-score-gap",
+        type=float,
+        default=MIN_SCORE_GAP,
+        help="Keep only DPO pairs where chosen_score - rejected_score is at least this value.",
+    )
     return parser.parse_args()
 
 
@@ -236,13 +310,19 @@ def main() -> None:
 
     all_pairs = []
     for input_csv, reference_sequence in zip(args.input_csv, reference_sequences):
-        scored_sequences = load_scored_sequences(input_csv)
+        scored_sequences = load_scored_sequences(
+            input_csv=input_csv,
+            reference_sequence=reference_sequence,
+            max_mutation_distance=args.max_mutation_distance,
+        )
         all_pairs.extend(
             sample_pairs(
                 scored_sequences=scored_sequences,
                 reference_sequence=reference_sequence,
                 num_pairs=args.pairs_per_input,
                 rng=rng,
+                min_score_gap=args.min_score_gap,
+                max_mutation_distance=args.max_mutation_distance,
             )
         )
 
@@ -251,6 +331,7 @@ def main() -> None:
     print(f"Wrote CSV: {args.output_csv}")
     print(f"Wrote JSONL: {args.output_jsonl}")
     print(f"Total DPO pairs: {len(all_pairs)}")
+    print(f"Minimum score gap: {args.min_score_gap}")
 
 
 if __name__ == "__main__":

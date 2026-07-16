@@ -44,7 +44,7 @@ optimizer:
   _component_: torch.optim.AdamW
   fused: true
   weight_decay: 0.05
-  lr: 5.0e-4
+  lr: 5.0e-6
 
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
@@ -52,7 +52,7 @@ lr_scheduler:
 
 loss:
   _component_: torchtune.rlhf.loss.DPOLoss
-  beta: 0.05
+  beta: 0.1
   label_smoothing: 0
 
 max_steps_per_epoch: null

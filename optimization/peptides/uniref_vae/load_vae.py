@@ -46,7 +46,7 @@ def load_uniref_vae(
     )
 
     # load in state dict of trained model:
-    path_to_vae_statedict = None ####### 이거나중에 빼세요!!!!! 먼가 저장이.되네 흠
+    # path_to_vae_statedict = None ####### 이거나중에 빼세요!!!!! 먼가 저장이.되네 흠
     if path_to_vae_statedict:
         state_dict = torch.load(path_to_vae_statedict)
         vae.load_state_dict(state_dict, strict=True)
