@@ -121,16 +121,6 @@ class APEXConstrainedDiverseOptimization(Optimize):
             zs, _ = self.objective.vae_forward(xs_batch)
             init_zs.append(zs.detach().cpu())
         init_zs = torch.cat(init_zs, dim=0)
-        # now save the zs so we don't have to recompute them in the future:
-        state_dict_file_type = self.objective.path_to_vae_statedict.split(".")[
-            -1
-        ]  # usually .pt or .ckpt
-        path_to_init_train_zs = self.objective.path_to_vae_statedict.replace(
-            f".{state_dict_file_type}", "-train-zs.csv"
-        )
-        zs_arr = init_zs.cpu().detach().numpy()
-        pd.DataFrame(zs_arr).to_csv(path_to_init_train_zs, header=None, index=None)  # type: ignore
-
         return init_zs
 
     def load_train_data(self):
@@ -172,32 +162,15 @@ class APEXConstrainedDiverseOptimization(Optimize):
         self.num_initialization_points = min(
             self.num_initialization_points, len(train_x_seqs)
         )
-        self.load_train_z()
         self.init_train_x = train_x_seqs[0 : self.num_initialization_points]
         train_y = train_y[0 : self.num_initialization_points]
         self.init_train_y = train_y  # .unsqueeze(-1)
-        return self
-
-    def load_train_z(
-        self,
-    ):
-        state_dict_file_type = self.path_to_vae_statedict.split(".")[
-            -1
-        ]  # usually .pt or .ckpt
-        path_to_init_train_zs = self.path_to_vae_statedict.replace(
-            f".{state_dict_file_type}", "-train-zs.csv"
-        )
-        # if we have a path to pre-computed train zs for vae, load them
-        try:
-            zs = pd.read_csv(path_to_init_train_zs, header=None).values
-            # make sure we have a sufficient number of saved train zs
-            assert len(zs) >= self.num_initialization_points
-            zs = zs[0 : self.num_initialization_points]
-            zs = torch.from_numpy(zs).float()
-        # otherwisee, set zs to None
-        except:
-            zs = None
-        self.init_train_z = zs
+        # Force a fresh VAE-encode of these actual sequences rather than
+        # reusing a cached train-zs file computed for a different task's
+        # init_train_x (load_train_z()'s cache is keyed only by row count and
+        # a fixed path, not by content -- see stbo_optimization.py's identical
+        # comment/fix, and imp_plan/01_peptide_reimplementation_plan.md).
+        self.init_train_z = None
         return self
 
 
