@@ -5,9 +5,11 @@ import json
 import random
 from pathlib import Path
 
+from make_train_data_csv import is_similar_enough
 
 REFERENCE_SEQUENCE = "RRYYEQLEQASRKGNRGFRR"
 DEFAULT_NUM_PAIRS = 1000
+SIMILARITY_THRESHOLD = 0.75
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_INPUT_CSV = (
@@ -68,9 +70,19 @@ def load_reference_sequence(reference_index: int) -> str:
     return reference_sequences[reference_index]
 
 
-def load_scored_sequences(input_csv: Path) -> list[tuple[str, float]]:
+def load_scored_sequences(
+    input_csv: Path, reference_sequence: str, similarity_threshold: float
+) -> list[tuple[str, float]]:
+    """Loads (sequence, score) pairs, restricted to candidates that satisfy
+    the similarity constraint against `reference_sequence` -- the same
+    feasibility notion `make_train_data_csv.py`'s `collect_top_sequences()`
+    already applies to the SFT dataset, so preference pairs aren't built from
+    candidates that scored well but don't actually resemble the reference
+    peptide.
+    """
     scored_sequences = []
     rows_skipped = 0
+    rows_infeasible = 0
 
     with input_csv.open(newline="") as f_in:
         reader = csv.DictReader(f_in)
@@ -93,14 +105,19 @@ def load_scored_sequences(input_csv: Path) -> list[tuple[str, float]]:
                 rows_skipped += 1
                 continue
 
+            if not is_similar_enough(sequence, reference_sequence, similarity_threshold):
+                rows_infeasible += 1
+                continue
+
             scored_sequences.append((sequence, score))
 
     if len(scored_sequences) < 2:
-        raise ValueError(f"Need at least 2 scored sequences in {input_csv}")
+        raise ValueError(f"Need at least 2 feasible scored sequences in {input_csv}")
 
     print(f"Input CSV: {input_csv}")
     print(f"  Loaded sequences: {len(scored_sequences)}")
-    print(f"  Rows skipped: {rows_skipped}")
+    print(f"  Rows skipped (unparseable/NA): {rows_skipped}")
+    print(f"  Rows skipped (similarity < {similarity_threshold}): {rows_infeasible}")
     return scored_sequences
 
 
@@ -210,6 +227,13 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_NUM_PAIRS,
         help="Random DPO pairs to sample from each input CSV.",
     )
+    parser.add_argument(
+        "--similarity-threshold",
+        type=float,
+        default=SIMILARITY_THRESHOLD,
+        help="Minimum similarity to the reference sequence (matches the BO similarity "
+        "constraint) a candidate must have to be eligible for a preference pair.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
 
@@ -236,7 +260,9 @@ def main() -> None:
 
     all_pairs = []
     for input_csv, reference_sequence in zip(args.input_csv, reference_sequences):
-        scored_sequences = load_scored_sequences(input_csv)
+        scored_sequences = load_scored_sequences(
+            input_csv, reference_sequence, args.similarity_threshold
+        )
         all_pairs.extend(
             sample_pairs(
                 scored_sequences=scored_sequences,

@@ -3,9 +3,12 @@ import csv
 import importlib.util
 from pathlib import Path
 
+from Levenshtein import distance as edit_distance
+
 
 REFERENCE_SEQUENCE = "RRYYEQLEQASRKGNRGFRR"
 TOP_N = 1000
+SIMILARITY_THRESHOLD = 0.75
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_INPUT_CSV = (
@@ -44,8 +47,27 @@ PANDAS_DEFAULT_NA_TOKENS = {
 }
 
 
-def collect_top_sequences(input_csv: Path, top_n: int) -> tuple[list[tuple[float, str]], int]:
+def is_similar_enough(sequence: str, reference_sequence: str, similarity_threshold: float) -> bool:
+    length = len(reference_sequence)
+    similarity = (length - edit_distance(sequence, reference_sequence)) / length
+    return similarity >= similarity_threshold
+
+
+def collect_top_sequences(
+    input_csv: Path,
+    top_n: int,
+    reference_sequence: str,
+    similarity_threshold: float,
+) -> tuple[list[tuple[float, str]], int, int]:
+    """Returns (top_n feasible sequences by score, rows_skipped as
+    unparseable/NA, rows_skipped as infeasible under the similarity
+    constraint). Feasibility filtering matches `APEXSimilarityConstraint` in
+    `your_tasks/your_blackbox_constraints.py` -- without it, sequences that
+    scored well on raw MIC but don't actually resemble the reference peptide
+    (i.e. invalid solutions to the task) can end up as SFT training targets.
+    """
     rows_skipped = 0
+    rows_infeasible = 0
     scored_sequences = []
 
     with input_csv.open(newline="") as f_in:
@@ -69,10 +91,14 @@ def collect_top_sequences(input_csv: Path, top_n: int) -> tuple[list[tuple[float
                 rows_skipped += 1
                 continue
 
+            if not is_similar_enough(sequence, reference_sequence, similarity_threshold):
+                rows_infeasible += 1
+                continue
+
             scored_sequences.append((score, sequence))
 
     top_sequences = sorted(scored_sequences, reverse=True)[:top_n]
-    return top_sequences, rows_skipped
+    return top_sequences, rows_skipped, rows_infeasible
 
 
 def make_train_data_csv(
@@ -80,6 +106,7 @@ def make_train_data_csv(
     output_csv: Path,
     reference_sequences: list[str],
     top_n: int,
+    similarity_threshold: float = SIMILARITY_THRESHOLD,
 ) -> None:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
 
@@ -96,7 +123,9 @@ def make_train_data_csv(
         writer.writeheader()
 
         for input_csv, reference_sequence in zip(input_csvs, reference_sequences):
-            top_sequences, rows_skipped = collect_top_sequences(input_csv, top_n)
+            top_sequences, rows_skipped, rows_infeasible = collect_top_sequences(
+                input_csv, top_n, reference_sequence, similarity_threshold
+            )
 
             for _, sequence in top_sequences:
                 writer.writerow(
@@ -109,7 +138,8 @@ def make_train_data_csv(
             total_rows_written += len(top_sequences)
             print(f"Input CSV: {input_csv}")
             print(f"  Rows written: {len(top_sequences)}")
-            print(f"  Rows skipped: {rows_skipped}")
+            print(f"  Rows skipped (unparseable/NA): {rows_skipped}")
+            print(f"  Rows skipped (similarity < {similarity_threshold}): {rows_infeasible}")
             print(f"  Top score: {top_sequences[0][0] if top_sequences else 'n/a'}")
             print(
                 f"  Bottom included score: "
@@ -152,6 +182,13 @@ def parse_args() -> argparse.Namespace:
         help="Index into apex_oracle/refseqs.py. Overrides --reference-sequence.",
     )
     parser.add_argument("--top-n", type=int, default=TOP_N)
+    parser.add_argument(
+        "--similarity-threshold",
+        type=float,
+        default=SIMILARITY_THRESHOLD,
+        help="Minimum similarity to the reference sequence (matches the BO similarity "
+        "constraint) a candidate must have to be eligible as an SFT training target.",
+    )
     return parser.parse_args()
 
 
@@ -172,4 +209,5 @@ if __name__ == "__main__":
         output_csv=args.output_csv,
         reference_sequences=reference_sequences,
         top_n=args.top_n,
+        similarity_threshold=args.similarity_threshold,
     )
