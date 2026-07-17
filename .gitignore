@@ -78,6 +78,9 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Ad hoc analysis/visualization notebooks (local scratch, not for review)
+notebooks/
+
 # IPython
 profile_default/
 ipython_config.py
@@ -147,6 +150,7 @@ venv.bak/
 # Project-local generated files
 fine-tuning/query_plans/ckpt/
 optimization/query_plans/.venv/
+fine-tuning/peptides/ckpt/
 
 # Spyder project settings
 .spyderproject
@@ -212,3 +216,13 @@ __marimo__/
 
 /paper
 /CLAUDE_ORPT_IMPLEMENTATION_HANDOFF.md
+
+# Working implementation-planning docs (not project source)
+/imp_plan/
+
+# Peptide BOLT/ORPT experiment harness -- generated run outputs, not source
+runs/
+wandb/
+optimization/peptides/lolbo_scripts/optimization_all_collected_data/*.csv
+optimization/peptides/uniref_vae/uniref-small.csv
+optimization/peptides/uniref_vae/saved_models/
