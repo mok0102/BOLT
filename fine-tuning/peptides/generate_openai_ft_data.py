@@ -34,18 +34,11 @@ data_path = args.data_path
 os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
 if not os.path.exists(data_path):
-    print(
-        f"Please provide a csv file at {data_path} with columns 'sequence' and 'reference_sequence'"
+    raise FileNotFoundError(
+        f"Expected a csv file at {data_path} with columns 'sequence' and "
+        "'reference_sequence' (built by make_train_data_csv.py)"
     )
-    # Create dummy data for demonstration if file doesn't exist
-    data = pd.DataFrame(
-        {
-            "sequence": ["RRTYFQLEQASRKGNRGFRR", "RRYYEQLEFASRKVNRGFRA"],
-            "reference_sequence": ["RRYYEQLEQASRKGNRGFRR", "RRYYEQLEQASRKGNRGFRR"],
-        }
-    )
-else:
-    data = pd.read_csv(data_path)
+data = pd.read_csv(data_path)
 
 train_jsonl = []
 for i, row in data.iterrows():
