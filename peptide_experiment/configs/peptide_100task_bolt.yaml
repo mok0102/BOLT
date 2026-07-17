@@ -1,0 +1,14 @@
+# Exploratory 100-task BOLT-only chain (build_orpt: false), for a head-to-head
+# comparison against peptide_100task_orpt.yaml's ORPT-enabled chain. Mirrors
+# peptide_50task_v1.yaml's reduced-scale choices (not paper-exact -- that's
+# peptide_main.yaml): 7 evenly-spaced milestones, oracle_budget/init_size
+# reduced 4x from paper values (20000/1000). Run on GPU 5, in parallel with
+# peptide_100task_orpt.yaml on GPU 6.
+experiment_id: peptide_100task_bolt_v1
+milestones: [14, 28, 42, 56, 70, 84, 100]
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+cuda_visible_devices: "5"

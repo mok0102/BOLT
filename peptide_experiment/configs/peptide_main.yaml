@@ -1,0 +1,8 @@
+# Paper-fidelity peptide config (Table 11 + Figure 1/2 milestones).
+experiment_id: peptide_main_v1
+milestones: [10, 20, 50, 600]
+oracle_budget: 20000
+init_size: 1000
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75

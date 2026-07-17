@@ -1,0 +1,22 @@
+# Exploratory 100-task ORPT-enabled chain (build_orpt: true), for a
+# head-to-head comparison against peptide_100task_bolt.yaml's plain BOLT-only
+# chain. Same milestone schedule/budget as that config so the two are
+# comparable at each milestone; the only difference is build_orpt (and the
+# GPU it runs on). Once build_orpt is on, task sampling after each milestone
+# comes from ORPT-<m> instead of BOLT-<m> (see trajectory_chain.py's
+# checkpoint_to_sample_from) -- BOLT-<m> is still built every milestone (as
+# its own comparable arm), just never used for sampling. Run on GPU 6, in
+# parallel with peptide_100task_bolt.yaml on GPU 5.
+experiment_id: peptide_100task_orpt_v1
+milestones: [14, 28, 42, 56, 70, 84, 100]
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+cuda_visible_devices: "6"
+build_orpt: true
+orpt_epochs: 1
+orpt_pairs_per_task: 1000
+orpt_lr: 5e-6
+orpt_beta: 0.02

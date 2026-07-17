@@ -1,0 +1,18 @@
+# Beta x LR diagnostic grid cell -- DPO-only, reuses an already-trained
+# BOLT-14 checkpoint (peptide_100task_bolt_v1) and existing preference pairs
+# (peptide_100task_orpt_v1/orpt_pairs/orpt_pairs_14.jsonl) via symlinks into
+# this experiment's run_dir, so only train_orpt_milestone(cfg, 14) needs to
+# run -- no SFT/BO re-run. oracle_budget/init_size/bsz are unused by that
+# path but required by ExperimentConfig; kept identical to the source runs
+# for consistency.
+experiment_id: peptide_grid_beta0.1_lr5e-5
+milestones: [14]
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+build_orpt: true
+orpt_epochs: 1
+orpt_beta: 0.1
+orpt_lr: 5e-5
+cuda_visible_devices: "4"

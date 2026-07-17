@@ -1,0 +1,17 @@
+# Exploratory scaling check, NOT a paper-exact reproduction (that's what
+# peptide_main.yaml is for): 7 evenly-spaced milestones over 50 tasks
+# (matching the paper's "fine-tuned an LLM ... 7 times" for peptides, since
+# only 4 of those 7 checkpoints are recoverable from the text as BOLT-10/
+# 20/50/600) to see whether proposal quality trends up with more tasks.
+# Budget/init_size reduced 4x from paper values (20000/1000) since this run
+# isn't going into the paper -- still a real optimization per task, just
+# faster than peptide_main.yaml's full scale.
+experiment_id: peptide_50task_v1
+milestones: [7, 14, 21, 28, 35, 42, 49]
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+max_train_tasks: 50
+cuda_visible_devices: "5"

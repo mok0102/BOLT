@@ -1,0 +1,17 @@
+# Longer-epoch diagnostic for the grid search's confirmed real winner
+# (beta=0.25, lr=2e-5 -- see notebooks/grid_search_diagnostics.ipynb Section 7,
+# the only cell that beats baseline once the similarity>=0.75 constraint is
+# actually enforced). Separate experiment_id from
+# peptide_grid_beta0.25_lr2e-5.yaml (orpt_epochs=1) so that cell's checkpoint/
+# eval results already on disk aren't touched by this rerun.
+experiment_id: peptide_grid_beta0.25_lr2e-5_epoch10
+milestones: [14]
+oracle_budget: 5000       # unused by train_orpt_milestone(), kept for parity
+init_size: 500            # unused
+bsz: 50                   # unused
+sft_epochs: 5
+build_orpt: true
+orpt_epochs: 10
+orpt_beta: 0.25
+orpt_lr: 2e-5
+cuda_visible_devices: "1"

@@ -1,0 +1,19 @@
+# Fresh smoke config for Stage 4 (ORPT) verification. Deliberately a NEW
+# experiment_id rather than reusing peptide_smoke_v1: that run's tasks 0-2
+# already have trajectory CSVs from the pre-ORPT sampling path, so rerunning
+# trajectory_chain against it with build_orpt newly flipped on would skip
+# them all (idempotent skip-if-exists) and never exercise
+# checkpoint_to_sample_from's new ORPT-branch.
+experiment_id: peptide_smoke_orpt_v1
+milestones: [1, 2, 3]
+oracle_budget: 200
+init_size: 20
+bsz: 10
+sft_epochs: 1
+similarity_threshold: 0.75
+heldout_tasks_override: [900, 901]
+table_k_checkpoints: [1, 50, 100, 150, 200]
+cuda_visible_devices: "5"
+build_orpt: true
+orpt_epochs: 1
+orpt_pairs_per_task: 20

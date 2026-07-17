@@ -1,0 +1,12 @@
+# Tiny end-to-end sanity check, distinct experiment_id so it can never
+# collide with real-run outputs under runs/.
+experiment_id: peptide_smoke_v1
+milestones: [1, 2, 3]
+oracle_budget: 200
+init_size: 20
+bsz: 10
+sft_epochs: 1
+similarity_threshold: 0.75
+heldout_tasks_override: [900, 901]
+table_k_checkpoints: [1, 50, 100, 150, 200]
+cuda_visible_devices: "5"
