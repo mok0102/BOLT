@@ -35,9 +35,11 @@ word2idx, idx2word = make_vocab()  # make amino acid vocabulary
 # Load pretrained APEX models (8 in total)
 APEX_models = []
 file_dir = os.path.dirname(os.path.abspath(__file__))
-# for a_model in glob.glob(f"{file_dir}/APEX_pathogen_models/APEX_*"):
-for a_model in glob.glob('/home/mok/module/steering/BOLT/optimization/peptides/apex/trained_models/*'):
-    model = torch.load(a_model)
+trained_models_dir = os.path.join(file_dir, "..", "apex", "trained_models")
+for a_model in glob.glob(os.path.join(trained_models_dir, "*")):
+    # weights_only=False: these are pickled full AMP_model objects (not just
+    # state dicts), from this repo's own trained_models/ -- trusted source.
+    model = torch.load(a_model, weights_only=False)
     model.eval()
     APEX_models.append(model)
 
