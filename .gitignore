@@ -222,6 +222,9 @@ __marimo__/
 
 # Peptide BOLT/ORPT experiment harness -- generated run outputs, not source
 runs/
+
+# Exploratory constraint-violation-rate analysis scripts (one-off, not reviewed source)
+/experiments/
 wandb/
 optimization/peptides/lolbo_scripts/optimization_all_collected_data/*.csv
 optimization/peptides/uniref_vae/uniref-small.csv

@@ -1,0 +1,28 @@
+# Full 7-milestone ORPT sweep at the grid search's confirmed winning
+# hyperparameters (beta=0.25, lr=2e-5, epoch=1 -- see
+# configs/gridsearch/peptide_grid_beta0.25_lr2e-5.yaml and
+# notebooks/grid_search_diagnostics.ipynb Section 7). Supersedes
+# peptide_100task_orpt.yaml (orpt_beta=0.02, orpt_lr=5e-6 -- stale/worse, and
+# that sweep never finished past ORPT-56/BOLT-70).
+#
+# Reuses peptide_100task_bolt_v1's already-completed BOLT-<m> checkpoints and
+# trajectory data via symlinks into this experiment_id's run_dir (same
+# reuse trick peptide_grid_beta0.25_lr2e-5.yaml's header documents, just
+# generalized from one milestone to all seven) so run_trajectory_chain only
+# needs to execute build_orpt_pairs + train_orpt_milestone for each milestone,
+# no SFT/BO re-run. oracle_budget/init_size/bsz are unused by that path but
+# required by ExperimentConfig; kept identical to peptide_100task_bolt_v1 for
+# consistency.
+experiment_id: peptide_100task_orpt_beta0.25
+milestones: [14, 28, 42, 56, 70, 84, 100]
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+build_orpt: true
+orpt_epochs: 1
+orpt_pairs_per_task: 1000
+orpt_beta: 0.25
+orpt_lr: 2e-5
+cuda_visible_devices: "6"
