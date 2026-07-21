@@ -223,8 +223,10 @@ __marimo__/
 # Peptide BOLT/ORPT experiment harness -- generated run outputs, not source
 runs/
 
-# Exploratory constraint-violation-rate analysis scripts (one-off, not reviewed source)
-/experiments/
+# experiments/ holds real, reused eval/comparison source (*.py) -- track that; the
+# generated per-run CSVs/PNGs and __pycache__ under it are not source, ignore those
+experiments/*/results/
+experiments/*/__pycache__/
 wandb/
 optimization/peptides/lolbo_scripts/optimization_all_collected_data/*.csv
 optimization/peptides/uniref_vae/uniref-small.csv
