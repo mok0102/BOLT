@@ -25,4 +25,4 @@ orpt_epochs: 1
 orpt_pairs_per_task: 1000
 orpt_beta: 0.25
 orpt_lr: 2e-5
-cuda_visible_devices: "6"
+cuda_visible_devices: "4"

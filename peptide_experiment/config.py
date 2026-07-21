@@ -56,6 +56,14 @@ class ExperimentConfig:
     orpt_pairs_per_task: int = 1000  # mirrors make_dpo_train_data_csv.py's own default
     orpt_beta: float = 0.1  # DPOLoss's beta (reference-relative logit scale)
     orpt_lr: float = 3e-4  # DPO optimizer learning rate
+    # "feasible_only" (default, original behavior): preference pairs are built
+    # only from similarity-constraint-feasible candidates, ranked by objective
+    # score alone. "lexicographic": infeasible candidates are kept and ranked
+    # *behind* any feasible candidate regardless of score -- the fix for
+    # naive DPO proposing constraint-violating sequences at generation time
+    # (see experiments/constraint_violation/ and make_dpo_train_data_csv.py's
+    # sample_pairs()/_pick_chosen_rejected() docstrings for the full rationale).
+    orpt_pairing_mode: str = "feasible_only"
     orpt_torchtune_config: str = "qwen_2_5_3B_lora_dpo.yaml"
     orpt_torchtune_recipe: str = "lora_dpo_distributed"
 

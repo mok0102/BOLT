@@ -26,11 +26,19 @@ FINE_TUNING_DIR = "fine-tuning/peptides"
 
 def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
     """Build preference pairs from the same cumulative trajectory data
-    [0, milestone) that BOLT-<milestone>'s own SFT dataset uses, restricted
-    to similarity-constraint-feasible candidates
-    (make_dpo_train_data_csv.py's --similarity-threshold), via the original
-    codebase's own uniform-random-pairing strategy (verified byte-identical
-    against /workspace/mok/BOLT's make_dpo_train_data_csv.py).
+    [0, milestone) that BOLT-<milestone>'s own SFT dataset uses, via the
+    original codebase's own uniform-random-pairing strategy (verified
+    byte-identical against /workspace/mok/BOLT's make_dpo_train_data_csv.py
+    for cfg.orpt_pairing_mode == "feasible_only", its default).
+
+    cfg.orpt_pairing_mode controls how the similarity constraint
+    (make_dpo_train_data_csv.py's --similarity-threshold) factors into
+    pairing: "feasible_only" restricts to constraint-feasible candidates and
+    ranks purely by objective score (original behavior); "lexicographic"
+    keeps infeasible candidates and ranks feasibility ahead of objective
+    score, so the model is taught "infeasible loses" regardless of how good
+    its score looks -- see make_dpo_train_data_csv.py's
+    sample_pairs()/_pick_chosen_rejected() for the ranking rule itself.
     """
     fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
     pairs_csv = cfg.orpt_pairs_dir / f"orpt_pairs_{milestone}.csv"
@@ -59,6 +67,8 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
             cfg.similarity_threshold,
             "--pairs-per-input",
             cfg.orpt_pairs_per_task,
+            "--pairing-mode",
+            cfg.orpt_pairing_mode,
             "--seed",
             42,
         ],

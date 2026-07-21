@@ -70,16 +70,34 @@ def load_reference_sequence(reference_index: int) -> str:
     return reference_sequences[reference_index]
 
 
+PAIRING_MODES = ("feasible_only", "lexicographic")
+
+
 def load_scored_sequences(
-    input_csv: Path, reference_sequence: str, similarity_threshold: float
-) -> list[tuple[str, float]]:
-    """Loads (sequence, score) pairs, restricted to candidates that satisfy
-    the similarity constraint against `reference_sequence` -- the same
-    feasibility notion `make_train_data_csv.py`'s `collect_top_sequences()`
-    already applies to the SFT dataset, so preference pairs aren't built from
-    candidates that scored well but don't actually resemble the reference
-    peptide.
+    input_csv: Path,
+    reference_sequence: str,
+    similarity_threshold: float,
+    pairing_mode: str = "feasible_only",
+) -> list[tuple[str, float, bool]]:
+    """Loads (sequence, score, is_feasible) triples.
+
+    pairing_mode="feasible_only" (default, original behavior): rows that
+    don't satisfy the similarity constraint against `reference_sequence` are
+    dropped entirely, so every returned triple has is_feasible=True --
+    preference pairs are never built from candidates that scored well but
+    don't actually resemble the reference peptide. Matches the feasibility
+    notion `make_train_data_csv.py`'s `collect_top_sequences()` already
+    applies to the SFT dataset.
+
+    pairing_mode="lexicographic": infeasible rows are kept (tagged
+    is_feasible=False) instead of dropped, so sample_pairs() can rank
+    feasibility ahead of the objective score -- see its docstring for why
+    (naive objective-only ranking among feasible-only pairs still lets the
+    trained policy propose infeasible sequences at generation time; see
+    /root/.claude/plans/orpt-beta-0-25-parsed-turing.md and
+    experiments/constraint_violation/).
     """
+    assert pairing_mode in PAIRING_MODES, pairing_mode
     scored_sequences = []
     rows_skipped = 0
     rows_infeasible = 0
@@ -105,19 +123,22 @@ def load_scored_sequences(
                 rows_skipped += 1
                 continue
 
-            if not is_similar_enough(sequence, reference_sequence, similarity_threshold):
+            is_feasible = is_similar_enough(sequence, reference_sequence, similarity_threshold)
+            if not is_feasible:
                 rows_infeasible += 1
-                continue
+                if pairing_mode == "feasible_only":
+                    continue
 
-            scored_sequences.append((sequence, score))
+            scored_sequences.append((sequence, score, is_feasible))
 
     if len(scored_sequences) < 2:
-        raise ValueError(f"Need at least 2 feasible scored sequences in {input_csv}")
+        raise ValueError(f"Need at least 2 usable scored sequences in {input_csv}")
 
+    kept_or_dropped = "kept for lexicographic ranking" if pairing_mode == "lexicographic" else "dropped"
     print(f"Input CSV: {input_csv}")
     print(f"  Loaded sequences: {len(scored_sequences)}")
     print(f"  Rows skipped (unparseable/NA): {rows_skipped}")
-    print(f"  Rows skipped (similarity < {similarity_threshold}): {rows_infeasible}")
+    print(f"  Rows infeasible (similarity < {similarity_threshold}): {rows_infeasible} -- {kept_or_dropped}")
     return scored_sequences
 
 
@@ -129,43 +150,122 @@ def make_messages(reference_sequence: str, assistant_sequence: str) -> list[dict
     ]
 
 
+def _pick_chosen_rejected(
+    first: tuple[str, float, bool],
+    second: tuple[str, float, bool],
+    pairing_mode: str,
+) -> tuple[str, float, str, float] | None:
+    """Returns (chosen_seq, chosen_score, rejected_seq, rejected_score) for
+    this sampled candidate pair, or None if it carries no training signal.
+
+    pairing_mode="feasible_only": both candidates are already guaranteed
+    feasible by load_scored_sequences(), so this is just the original
+    objective-score ranking (higher score wins; ties carry no signal).
+
+    pairing_mode="lexicographic": feasibility is ranked *ahead of* the
+    objective score -- exactly one candidate being feasible wins that pair
+    regardless of score (this is the fix for naive DPO's constraint
+    violations: it directly teaches "infeasible loses" independent of how
+    good the objective looks). Both infeasible carries no useful signal
+    (skipped). Both feasible falls through to the same score-based rule as
+    feasible_only.
+    """
+    first_sequence, first_score, first_feasible = first
+    second_sequence, second_score, second_feasible = second
+
+    if pairing_mode == "lexicographic" and first_feasible != second_feasible:
+        if first_feasible:
+            return first_sequence, first_score, second_sequence, second_score
+        return second_sequence, second_score, first_sequence, first_score
+
+    if pairing_mode == "lexicographic" and not first_feasible and not second_feasible:
+        return None
+
+    if first_score == second_score:
+        return None
+    if first_score > second_score:
+        return first_sequence, first_score, second_sequence, second_score
+    return second_sequence, second_score, first_sequence, first_score
+
+
+def _build_pair(reference_sequence: str, result: tuple[str, float, str, float]) -> dict:
+    chosen_sequence, chosen_score, rejected_sequence, rejected_score = result
+    return {
+        "reference_sequence": reference_sequence,
+        "chosen_sequence": chosen_sequence,
+        "rejected_sequence": rejected_sequence,
+        "chosen_score": chosen_score,
+        "rejected_score": rejected_score,
+        "chosen": make_messages(reference_sequence, chosen_sequence),
+        "rejected": make_messages(reference_sequence, rejected_sequence),
+    }
+
+
 def sample_pairs(
-    scored_sequences: list[tuple[str, float]],
+    scored_sequences: list[tuple[str, float, bool]],
     reference_sequence: str,
     num_pairs: int,
     rng: random.Random,
+    pairing_mode: str = "feasible_only",
 ) -> list[dict]:
+    max_attempts = max(num_pairs * 50, 200)
+
+    if pairing_mode == "lexicographic":
+        feasible = [s for s in scored_sequences if s[2]]
+        infeasible = [s for s in scored_sequences if not s[2]]
+        if not feasible:
+            raise ValueError(
+                "No feasible sequences available for lexicographic pairing "
+                f"(0 of {len(scored_sequences)} candidates satisfy the similarity "
+                "constraint) -- every pair would be both-infeasible with no signal."
+            )
+
+        # Draw pairs stratified by feasibility instead of blindly sampling 2
+        # rows from the whole pool: a mixed (feasible, infeasible) draw is
+        # always a valid pair, so this can't stall the way naive rejection
+        # sampling does when the feasible fraction is extreme (e.g. 50 of
+        # 10050 candidates, ~0.5%, seen on real trajectory data at low
+        # milestones). Mixed vs both-feasible draws are weighted by how many
+        # of each actually exist (nf*ninf vs nf*(nf-1)), which is the same
+        # ratio a uniform draw over the whole pool would produce among its
+        # valid (non-both-infeasible) outcomes -- so this changes only the
+        # sampling *mechanism*, not the resulting pair-type distribution.
+        n_mixed = len(feasible) * len(infeasible)
+        n_both_feasible = len(feasible) * (len(feasible) - 1)
+        total = n_mixed + n_both_feasible
+        mixed_probability = n_mixed / total if total else 0.0
+
+        pairs = []
+        attempts = 0
+        while len(pairs) < num_pairs and attempts < max_attempts:
+            attempts += 1
+            if infeasible and rng.random() < mixed_probability:
+                first, second = rng.choice(feasible), rng.choice(infeasible)
+            elif len(feasible) >= 2:
+                first, second = rng.sample(feasible, 2)
+            else:
+                continue
+            result = _pick_chosen_rejected(first, second, pairing_mode)
+            if result is None:
+                continue
+            pairs.append(_build_pair(reference_sequence, result))
+
+        if len(pairs) < num_pairs:
+            raise ValueError(
+                f"Could only create {len(pairs)} pairs out of requested {num_pairs}. "
+                "Too many tied scores among feasible candidates may be present."
+            )
+        return pairs
+
     pairs = []
     attempts = 0
-    max_attempts = max(num_pairs * 20, 100)
-
     while len(pairs) < num_pairs and attempts < max_attempts:
         attempts += 1
         first, second = rng.sample(scored_sequences, 2)
-        first_sequence, first_score = first
-        second_sequence, second_score = second
-
-        if first_score == second_score:
+        result = _pick_chosen_rejected(first, second, pairing_mode)
+        if result is None:
             continue
-
-        if first_score > second_score:
-            chosen_sequence, chosen_score = first_sequence, first_score
-            rejected_sequence, rejected_score = second_sequence, second_score
-        else:
-            chosen_sequence, chosen_score = second_sequence, second_score
-            rejected_sequence, rejected_score = first_sequence, first_score
-
-        pairs.append(
-            {
-                "reference_sequence": reference_sequence,
-                "chosen_sequence": chosen_sequence,
-                "rejected_sequence": rejected_sequence,
-                "chosen_score": chosen_score,
-                "rejected_score": rejected_score,
-                "chosen": make_messages(reference_sequence, chosen_sequence),
-                "rejected": make_messages(reference_sequence, rejected_sequence),
-            }
-        )
+        pairs.append(_build_pair(reference_sequence, result))
 
     if len(pairs) < num_pairs:
         raise ValueError(
@@ -234,6 +334,14 @@ def parse_args() -> argparse.Namespace:
         help="Minimum similarity to the reference sequence (matches the BO similarity "
         "constraint) a candidate must have to be eligible for a preference pair.",
     )
+    parser.add_argument(
+        "--pairing-mode",
+        choices=PAIRING_MODES,
+        default="feasible_only",
+        help="'feasible_only' (default): drop infeasible candidates, rank remaining pairs "
+        "by objective score only (original behavior). 'lexicographic': keep infeasible "
+        "candidates and rank feasibility ahead of objective score.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
 
@@ -261,7 +369,7 @@ def main() -> None:
     all_pairs = []
     for input_csv, reference_sequence in zip(args.input_csv, reference_sequences):
         scored_sequences = load_scored_sequences(
-            input_csv, reference_sequence, args.similarity_threshold
+            input_csv, reference_sequence, args.similarity_threshold, args.pairing_mode
         )
         all_pairs.extend(
             sample_pairs(
@@ -269,6 +377,7 @@ def main() -> None:
                 reference_sequence=reference_sequence,
                 num_pairs=args.pairs_per_input,
                 rng=rng,
+                pairing_mode=args.pairing_mode,
             )
         )
 
