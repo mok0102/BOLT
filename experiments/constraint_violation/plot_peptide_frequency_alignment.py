@@ -7,7 +7,8 @@ independently and don't share any x-axis identity -- can still be compared
 by eye.
 
 Genuine dual-axis chart by explicit request (frequency and unbounded score
-sharing one panel), same call as plot_peptide_alignment.py.
+sharing one panel) -- normally an anti-pattern per the dataviz skill, but
+built as asked rather than substituted.
 
 Produces one figure per requested task_idx from
 peptide_frequency_alignment.py's per_sequence_frequency_alignment.csv /
@@ -27,9 +28,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-ARM_COLOR = {"BOLT": "#2a78d6", "ORPT": "#e34948"}
-GRID_COLOR = "#e1e0d9"
-MUTED_TEXT = "#898781"
+from plot_common import ARM_COLOR, GRID_COLOR, MUTED_TEXT
+
 DEFAULT_TOP_N = 30
 
 

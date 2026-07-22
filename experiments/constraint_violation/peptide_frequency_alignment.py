@@ -4,9 +4,9 @@ surviving candidate aligns with its APEX score -- does BOLT-<m>/ORPT-<m>
 resample the same good-scoring mutation repeatedly, or is a high sampling
 frequency uncorrelated with score?
 
-This is a different question from measure_violation_rate.py/rank_alignment.py:
-those measure per-task violation rate and score-vs-rank among the deduped
-pool. Here we deliberately do NOT dedup first -- load_raw_generations()
+This is a different question from measure_violation_rate.py: that measures
+per-task violation rate among the deduped pool. Here we deliberately do NOT
+dedup first -- load_raw_generations()
 already returns the raw, duplicated draws (e.g. 2 attempt files x 500
 answers = ~1000 draws for one task), so counting occurrences of each exact
 sequence string gives the empirical resampling frequency. Rejection
