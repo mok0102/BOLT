@@ -66,6 +66,25 @@ class ExperimentConfig:
     orpt_pairing_mode: str = "feasible_only"
     orpt_torchtune_config: str = "qwen_2_5_3B_lora_dpo.yaml"
     orpt_torchtune_recipe: str = "lora_dpo_distributed"
+    # "dpo" (default, unchanged): torchtune.rlhf.loss.DPOLoss via the stock
+    # lora_dpo_distributed recipe. "fa_orpt": the feasibility-aware loss in
+    # fine-tuning/peptides/fa_orpt/loss.py, which needs the feasibility
+    # labels + kept both-infeasible pairs that only orpt_pairing_mode=
+    # "feasibility_aware" produces (enforced in __post_init__ below) -- set
+    # orpt_torchtune_recipe="fa_orpt/recipe.py" and orpt_torchtune_config=
+    # "qwen_2_5_3B_lora_fa_orpt.yaml" alongside this.
+    orpt_loss_type: str = "dpo"
+    # fa_orpt loss hyperparameters (see fa_orpt/loss.py's docstring for the
+    # notation); unused when orpt_loss_type == "dpo". Defaults match the
+    # experiment spec.
+    fa_orpt_gamma_obj: float = 0.0
+    fa_orpt_gamma_plus: float = 0.0
+    fa_orpt_gamma_keep: float = -0.1
+    fa_orpt_lambda_up: float = 0.2
+    fa_orpt_lambda_keep: float = 0.2
+    fa_orpt_gamma_f: float = 0.0
+    fa_orpt_gamma_i: float = 0.5
+    fa_orpt_lambda_inf: float = 1.0
 
     bolt_root: Path = BOLT_ROOT
     heldout20_tasks: list[int] = field(default_factory=lambda: list(HELDOUT20_TASKS))
@@ -76,6 +95,13 @@ class ExperimentConfig:
         if not self.base_checkpoint_dir.is_absolute():
             self.base_checkpoint_dir = self.bolt_root / self.base_checkpoint_dir
         self.milestones = sorted(self.milestones)
+        if self.orpt_loss_type == "fa_orpt" and self.orpt_pairing_mode != "feasibility_aware":
+            raise ValueError(
+                "orpt_loss_type='fa_orpt' requires orpt_pairing_mode='feasibility_aware' "
+                f"(got {self.orpt_pairing_mode!r}) -- fa_orpt's loss needs the per-side "
+                "feasibility labels and kept both-infeasible pairs that only that pairing "
+                "mode produces (see make_dpo_train_data_csv.py)."
+            )
         if self.heldout_tasks_override is not None:
             self.heldout20_tasks = list(self.heldout_tasks_override)
             self.heldout100_tasks = list(self.heldout_tasks_override)

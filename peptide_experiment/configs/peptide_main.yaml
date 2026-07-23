@@ -6,3 +6,40 @@ init_size: 1000
 bsz: 50
 sft_epochs: 5
 similarity_threshold: 0.75
+
+# -- everything below is left at ExperimentConfig's default value; spelled
+# out explicitly here so every configurable key is visible in one place --
+
+task_specific_args: bacteria_0                # only supported value -- your_objective_functions.py asserts 0 on anything else
+torchtune_config: qwen_2_5_3B_lora.yaml       # alternatives in fine-tuning/peptides/torchtune_config/: qwen_2_5_3B_full.yaml, qwen_2_5_7B_full.yaml
+torchtune_recipe: lora_finetune_distributed   # pair qwen_2_5_3B_full.yaml/qwen_2_5_7B_full.yaml with full_finetune_distributed instead
+base_checkpoint_dir: fine-tuning/peptides/ckpt/Qwen2.5-3B-Instruct
+max_train_tasks: null         # null -> max(milestones)
+cuda_visible_devices: null    # null -> don't pin a GPU; check availability before setting
+heldout_tasks_override: null  # null -> use the real paper heldout20/heldout100 splits
+table_k_checkpoints: [1, 100, 200, 500, 1000]
+
+# ORPT (Stage 4) -- off by default; this is a BOLT-only paper-fidelity config.
+build_orpt: false
+orpt_epochs: 1
+orpt_pairs_per_task: 1000
+orpt_beta: 0.1
+orpt_lr: 3.0e-4
+orpt_pairing_mode: feasible_only  # alternatives: lexicographic (keeps infeasible candidates, ranks them behind any feasible one, skips both-infeasible pairs); feasibility_aware (same, but also keeps both-infeasible pairs -- required by orpt_loss_type: fa_orpt)
+orpt_torchtune_config: qwen_2_5_3B_lora_dpo.yaml     # alternative: qwen_2_5_3B_dpo.yaml (full DPO, not LoRA); fa_orpt loss_type needs qwen_2_5_3B_lora_fa_orpt.yaml instead
+orpt_torchtune_recipe: lora_dpo_distributed          # pair qwen_2_5_3B_dpo.yaml with full_dpo_distributed instead; fa_orpt loss_type needs fa_orpt/recipe.py instead
+
+# fa_orpt (feasibility-aware ORPT loss) -- off by default (orpt_loss_type: dpo,
+# the DPOLoss-based loss above). Set orpt_loss_type: fa_orpt + orpt_pairing_mode:
+# feasibility_aware + orpt_torchtune_config: qwen_2_5_3B_lora_fa_orpt.yaml +
+# orpt_torchtune_recipe: fa_orpt/recipe.py together to switch arms -- see
+# fine-tuning/peptides/fa_orpt/loss.py and peptide_100task_orpt_fa.yaml.
+orpt_loss_type: dpo  # alternative: fa_orpt
+fa_orpt_gamma_obj: 0.0
+fa_orpt_gamma_plus: 0.0
+fa_orpt_gamma_keep: -0.1
+fa_orpt_lambda_up: 0.2
+fa_orpt_lambda_keep: 0.2
+fa_orpt_gamma_f: 0.0
+fa_orpt_gamma_i: 0.5
+fa_orpt_lambda_inf: 1.0

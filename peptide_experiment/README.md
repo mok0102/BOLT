@@ -92,11 +92,59 @@ machine before picking one.
 | `peptide_main.yaml` | Paper-fidelity BOLT-only config (`milestones: [10,20,50,600]`) |
 | `peptide_100task_bolt_v1` / `peptide_100task_orpt_beta0.25.yaml` | The real 100-task, 7-milestone sweep this repo's results are based on; `orpt_beta=0.25`/`orpt_lr=2e-5` is the grid-search-confirmed winning ORPT hyperparameter set |
 | `peptide_100task_orpt_lexicographic.yaml` | ORPT trained with `orpt_pairing_mode: lexicographic` instead of `feasible_only` (see `orpt.py`/`config.py`) |
+| `peptide_100task_orpt_fa.yaml` | ORPT trained with `orpt_loss_type: fa_orpt` (feasibility-aware loss, see `fine-tuning/peptides/fa_orpt/`) instead of the DPOLoss-based `dpo` |
 | `configs/gridsearch/*.yaml` | Single-milestone ORPT hyperparameter sweep cells (beta/lr grid) |
 
 Write a new config rather than editing one of the above in place — each `experiment_id`
 owns its own `runs/<experiment_id>/` output dir, so a stale config edit can silently mix
 results from two different runs.
+
+## Config keys (`ExperimentConfig`, see `config.py`)
+
+`peptide_main.yaml` has every key spelled out (including ones left at their default) as
+a reference; other configs only override what differs from the default.
+
+Required (no default):
+
+| Key | Meaning |
+|---|---|
+| `experiment_id` | Names `runs/<experiment_id>/` — must be unique per run |
+| `milestones` | #tasks-trained checkpoints to produce (e.g. `[10, 20, 50, 600]`) |
+| `oracle_budget` | Oracle-call budget per BO run (`--max_n_oracle_calls`) |
+| `init_size` | Initial pool size per BO run (`--num_initialization_points`) |
+| `bsz` | LLM generation batch size |
+| `sft_epochs` | Epochs per BOLT-SFT milestone training stage |
+
+Optional (default shown):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `similarity_threshold` | `0.75` | Min edit-distance similarity to the reference peptide for a candidate to be constraint-feasible |
+| `task_specific_args` | `bacteria_0` | Objective-function score version; **only supported value** — `your_objective_functions.py` asserts 0 on anything else |
+| `torchtune_config` | `qwen_2_5_3B_lora.yaml` | BOLT-SFT torchtune config, from `fine-tuning/peptides/torchtune_config/`; alternatives there: `qwen_2_5_3B_full.yaml`, `qwen_2_5_7B_full.yaml` |
+| `torchtune_recipe` | `lora_finetune_distributed` | Must match `torchtune_config`'s tuning style — use `full_finetune_distributed` with the `_full.yaml` configs above |
+| `base_checkpoint_dir` | `fine-tuning/peptides/ckpt/Qwen2.5-3B-Instruct` | Base model checkpoint (relative paths resolve against `bolt_root`) |
+| `max_train_tasks` | `null` | Cap on train-task range; `null` -> `max(milestones)` |
+| `cuda_visible_devices` | `null` | Pins subprocess + in-process CUDA to one GPU; `null` -> don't set it. Check GPU availability with other users of the machine before setting |
+| `heldout_tasks_override` | `null` | Smoke-test escape hatch — replaces both `heldout20`/`heldout100` with a tiny custom task-index list; `null` -> use the real paper splits |
+| `table_k_checkpoints` | `[1, 100, 200, 500, 1000]` | Oracle-call checkpoints for Table 11 / Figure 1-2 aggregation |
+| `build_orpt` | `false` | Train an ORPT-`<m>` DPO stage on top of every BOLT-`<m>` |
+| `orpt_epochs` | `1` | Epochs per ORPT milestone training stage |
+| `orpt_pairs_per_task` | `1000` | DPO preference pairs sampled per task |
+| `orpt_beta` | `0.1` | DPO loss beta (reference-relative logit scale); `0.25` is the grid-search-confirmed winner (see `peptide_100task_orpt_beta0.25.yaml`) |
+| `orpt_lr` | `3.0e-4` | DPO optimizer learning rate; `2e-5` is the grid-search-confirmed winner — **write scientific notation with a decimal point** (`2.0e-5`, not `2e-5`), otherwise PyYAML parses it as a string, not a float |
+| `orpt_pairing_mode` | `feasible_only` | Preference-pair ranking: `feasible_only` ranks by objective score among constraint-feasible candidates only; `lexicographic` keeps infeasible candidates and always ranks them behind any feasible one, skipping both-infeasible pairs (fixes naive DPO proposing constraint-violating sequences — see `experiments/constraint_violation/`); `feasibility_aware` is the same as `lexicographic` but also keeps both-infeasible pairs — **required** when `orpt_loss_type: fa_orpt` |
+| `orpt_torchtune_config` | `qwen_2_5_3B_lora_dpo.yaml` | ORPT torchtune config; alternatives: `qwen_2_5_3B_dpo.yaml` (full DPO, not LoRA), `qwen_2_5_3B_lora_fa_orpt.yaml` (pair with `orpt_loss_type: fa_orpt`) |
+| `orpt_torchtune_recipe` | `lora_dpo_distributed` | Must match `orpt_torchtune_config` — use `full_dpo_distributed` with `qwen_2_5_3B_dpo.yaml`, or `fa_orpt/recipe.py` with `qwen_2_5_3B_lora_fa_orpt.yaml` |
+| `orpt_loss_type` | `dpo` | ORPT loss: `dpo` is the stock `torchtune.rlhf.loss.DPOLoss` DPO-style ranking loss; `fa_orpt` is the feasibility-aware loss in `fine-tuning/peptides/fa_orpt/loss.py`, which separates the feasible-vs-feasible objective-ranking signal from the feasible/infeasible-vs-infeasible feasibility signal (see its docstring). Requires `orpt_pairing_mode: feasibility_aware` (enforced in `config.py`'s `__post_init__`) |
+| `fa_orpt_gamma_obj` | `0.0` | fa_orpt only: feasible-vs-feasible ranking margin |
+| `fa_orpt_gamma_plus` | `0.0` | fa_orpt only: target the winning feasible candidate's reference-relative score should rise above |
+| `fa_orpt_gamma_keep` | `-0.1` | fa_orpt only: floor the losing feasible candidate's reference-relative score shouldn't fall below |
+| `fa_orpt_lambda_up` | `0.2` | fa_orpt only: weight on the winning-feasible-candidate-should-rise term |
+| `fa_orpt_lambda_keep` | `0.2` | fa_orpt only: weight on the losing-feasible-candidate-shouldn't-fall-too-far term |
+| `fa_orpt_gamma_f` | `0.0` | fa_orpt only: target the feasible side should rise above, in a feasible-vs-infeasible pair |
+| `fa_orpt_gamma_i` | `0.5` | fa_orpt only: target below which an infeasible candidate's score should fall (feasible-vs-infeasible and infeasible-vs-infeasible pairs) |
+| `fa_orpt_lambda_inf` | `1.0` | fa_orpt only: weight on infeasible-candidate-suppression terms |
 
 ## Where results land
 

@@ -74,6 +74,33 @@ def real_rejection_sample(cfg: ExperimentConfig, task_idx: int, raw_task_dir: Pa
     return feasible
 
 
+def samples_to_m_feasible(
+    cfg: ExperimentConfig, task_idx: int, raw_task_dir: Path, m: int
+) -> int | None:
+    """1-indexed draw count (over load_raw_generations()'s raw, order-preserved
+    sequence stream) at which the m-th unique similarity-feasible sequence
+    first appears -- "how many samples does a real reject-and-discard policy
+    need to draw before it has accumulated m feasible candidates". None if
+    fewer than m feasible sequences appear anywhere in the available raw
+    generations. Same dedup/similarity logic as real_rejection_sample()
+    above, just stops as soon as the m-th feasible draw is found instead of
+    collecting the full feasible list.
+    """
+    reference = REFERENCE_SEQUENCE[task_idx]
+    sequences = load_raw_generations(raw_task_dir, task_idx)
+    seen: set[str] = set()
+    n_feasible = 0
+    for draw_idx, seq in enumerate(sequences, start=1):
+        if seq in seen:
+            continue
+        seen.add(seq)
+        if similarity(seq, reference) >= cfg.similarity_threshold:
+            n_feasible += 1
+            if n_feasible == m:
+                return draw_idx
+    return None
+
+
 def build_rejection_sampled_init(
     cfg: ExperimentConfig, task_idx: int, raw_task_dir: Path, work_dir: Path, min_feasible: int
 ) -> tuple[Path, Path, int] | None:

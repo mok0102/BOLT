@@ -58,6 +58,22 @@ def read_pool_size(bo_dir: Path, task_idx: int) -> int | None:
     return sum(1 for line in init_path.read_text().splitlines() if line.strip())
 
 
+def read_best_feasible_incumbent(bo_dir: Path, task_idx: int) -> float | None:
+    """Best (lowest) MIC among the real-rejection-sampled feasible init pool
+    itself -- i.e. the generation-time incumbent, before any BO acquisition
+    steps. build_rejection_sampled_init() already writes this pool's scores
+    (train_y = -MIC, same convention as trajectories_csv) to
+    task_XXXX_scores.csv; this just reads them back rather than
+    recomputing anything."""
+    scores_path = bo_dir / f"task_{task_idx:04d}_scores.csv"
+    if not scores_path.exists():
+        return None
+    scores = [float(line) for line in scores_path.read_text().splitlines() if line.strip()]
+    if not scores:
+        return None
+    return -max(scores)
+
+
 def compute_rows(
     cfg: ExperimentConfig,
     arm_prefixes: list[str],
@@ -82,7 +98,7 @@ def compute_rows(
                 if not raw_task_dir.exists():
                     continue
 
-                pool_sizes, n_ran_bo = [], 0
+                pool_sizes, feasible_incumbents, n_ran_bo = [], [], 0
                 for task_idx in task_indices:
                     feasible_pool_size = len(real_rejection_sample(cfg, task_idx, raw_task_dir))
                     pool_sizes.append(feasible_pool_size)
@@ -92,6 +108,9 @@ def compute_rows(
                     if not csv_path.exists() or pool_size is None:
                         continue
                     n_ran_bo += 1
+                    best_feasible_incumbent = read_best_feasible_incumbent(bo_dir, task_idx)
+                    if best_feasible_incumbent is not None:
+                        feasible_incumbents.append(best_feasible_incumbent)
                     for k in k_checkpoints(cfg):
                         best_mic = _best_mic_at_k(csv_path, pool_size, k)
                         bo_rows.append(
@@ -101,6 +120,7 @@ def compute_rows(
                                 "task_set": task_set,
                                 "task_idx": task_idx,
                                 "pool_size": pool_size,
+                                "best_feasible_incumbent": best_feasible_incumbent,
                                 "k": k,
                                 "best_mic": best_mic,
                             }
@@ -117,6 +137,11 @@ def compute_rows(
                         "min_pool_size": min(pool_sizes) if pool_sizes else None,
                         "mean_pool_size": sum(pool_sizes) / len(pool_sizes) if pool_sizes else None,
                         "max_pool_size": max(pool_sizes) if pool_sizes else None,
+                        "mean_best_feasible_incumbent": (
+                            sum(feasible_incumbents) / len(feasible_incumbents)
+                            if feasible_incumbents
+                            else None
+                        ),
                     }
                 )
 
@@ -190,13 +215,16 @@ def main() -> None:
         out_dir / "rejection_sampled_bo_coverage.csv",
         fieldnames=[
             "arm", "milestone", "task_set", "n_tasks", "n_ran_bo", "coverage_rate",
-            "min_pool_size", "mean_pool_size", "max_pool_size",
+            "min_pool_size", "mean_pool_size", "max_pool_size", "mean_best_feasible_incumbent",
         ],
     )
     write_csv(
         bo_rows,
         out_dir / "per_task_rejection_sampled_bo.csv",
-        fieldnames=["arm", "milestone", "task_set", "task_idx", "pool_size", "k", "best_mic"],
+        fieldnames=[
+            "arm", "milestone", "task_set", "task_idx", "pool_size",
+            "best_feasible_incumbent", "k", "best_mic",
+        ],
     )
     write_csv(
         summarize_bo_rows(bo_rows),

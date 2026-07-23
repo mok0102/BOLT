@@ -100,6 +100,33 @@ def train_orpt_milestone(cfg: ExperimentConfig, milestone: int):
     fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
     pairs_jsonl = build_orpt_pairs(cfg, milestone)
 
+    overrides = [
+        f"output_dir={ckpt_dir}",
+        f"dataset.data_files={pairs_jsonl}",
+        f"tokenizer.path={cfg.base_checkpoint_dir}/vocab.json",
+        f"tokenizer.merges_file={cfg.base_checkpoint_dir}/merges.txt",
+        f"checkpointer.checkpoint_dir={bolt_ckpt}",
+        f"epochs={cfg.orpt_epochs}",
+        f"loss.beta={cfg.orpt_beta}",
+        f"optimizer.lr={cfg.orpt_lr}",
+        "seed=42",
+        f"metric_logger.log_dir={cfg.tensorboard_dir / f'ORPT-{milestone}'}",
+    ]
+    if cfg.orpt_loss_type == "fa_orpt":
+        # DPOLoss only takes loss.beta (already appended above); fa_orpt's
+        # loss (fine-tuning/peptides/fa_orpt/loss.py) additionally takes
+        # these 8 hyperparameters -- see its docstring for the notation.
+        overrides += [
+            f"loss.gamma_obj={cfg.fa_orpt_gamma_obj}",
+            f"loss.gamma_plus={cfg.fa_orpt_gamma_plus}",
+            f"loss.gamma_keep={cfg.fa_orpt_gamma_keep}",
+            f"loss.lambda_up={cfg.fa_orpt_lambda_up}",
+            f"loss.lambda_keep={cfg.fa_orpt_lambda_keep}",
+            f"loss.gamma_f={cfg.fa_orpt_gamma_f}",
+            f"loss.gamma_i={cfg.fa_orpt_gamma_i}",
+            f"loss.lambda_inf={cfg.fa_orpt_lambda_inf}",
+        ]
+
     _run(
         [
             "tune",
@@ -111,16 +138,7 @@ def train_orpt_milestone(cfg: ExperimentConfig, milestone: int):
             cfg.orpt_torchtune_recipe,
             "--config",
             f"torchtune_config/{cfg.orpt_torchtune_config}",
-            f"output_dir={ckpt_dir}",
-            f"dataset.data_files={pairs_jsonl}",
-            f"tokenizer.path={cfg.base_checkpoint_dir}/vocab.json",
-            f"tokenizer.merges_file={cfg.base_checkpoint_dir}/merges.txt",
-            f"checkpointer.checkpoint_dir={bolt_ckpt}",
-            f"epochs={cfg.orpt_epochs}",
-            f"loss.beta={cfg.orpt_beta}",
-            f"optimizer.lr={cfg.orpt_lr}",
-            "seed=42",
-            f"metric_logger.log_dir={cfg.tensorboard_dir / f'ORPT-{milestone}'}",
+            *overrides,
         ],
         cwd=fine_tuning_dir,
         cfg=cfg,

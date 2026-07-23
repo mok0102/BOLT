@@ -11,6 +11,13 @@ REFERENCE_SEQUENCE = "RRYYEQLEQASRKGNRGFRR"
 DEFAULT_NUM_PAIRS = 1000
 SIMILARITY_THRESHOLD = 0.75
 
+# (mixed, both_feasible, both_infeasible) draw-probability weights for
+# --pairing-mode feasibility_aware's sample_pairs(), renormalized over
+# whichever of the three types the pool can actually supply. Equal by
+# default -- see sample_pairs()'s feasibility_aware branch for why this
+# should NOT default to the raw pool's feasible/infeasible combinatorics.
+DEFAULT_FEASIBILITY_AWARE_PAIR_TYPE_MIX = (1.0, 1.0, 1.0)
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_INPUT_CSV = (
     SCRIPT_DIR
@@ -70,7 +77,7 @@ def load_reference_sequence(reference_index: int) -> str:
     return reference_sequences[reference_index]
 
 
-PAIRING_MODES = ("feasible_only", "lexicographic")
+PAIRING_MODES = ("feasible_only", "lexicographic", "feasibility_aware")
 
 
 def load_scored_sequences(
@@ -96,6 +103,13 @@ def load_scored_sequences(
     trained policy propose infeasible sequences at generation time; see
     /root/.claude/plans/orpt-beta-0-25-parsed-turing.md and
     experiments/constraint_violation/).
+
+    pairing_mode="feasibility_aware": same as "lexicographic" -- infeasible
+    rows are kept, not dropped. Unlike "lexicographic", sample_pairs() for
+    this mode does not skip both-infeasible draws (see its docstring); the
+    feasibility_aware ORPT loss needs both-infeasible pairs to downweight
+    both candidates, whereas lexicographic pairing treats them as carrying
+    no signal.
     """
     assert pairing_mode in PAIRING_MODES, pairing_mode
     scored_sequences = []
@@ -134,7 +148,7 @@ def load_scored_sequences(
     if len(scored_sequences) < 2:
         raise ValueError(f"Need at least 2 usable scored sequences in {input_csv}")
 
-    kept_or_dropped = "kept for lexicographic ranking" if pairing_mode == "lexicographic" else "dropped"
+    kept_or_dropped = "dropped" if pairing_mode == "feasible_only" else "kept for ranking"
     print(f"Input CSV: {input_csv}")
     print(f"  Loaded sequences: {len(scored_sequences)}")
     print(f"  Rows skipped (unparseable/NA): {rows_skipped}")
@@ -154,9 +168,10 @@ def _pick_chosen_rejected(
     first: tuple[str, float, bool],
     second: tuple[str, float, bool],
     pairing_mode: str,
-) -> tuple[str, float, str, float] | None:
-    """Returns (chosen_seq, chosen_score, rejected_seq, rejected_score) for
-    this sampled candidate pair, or None if it carries no training signal.
+) -> tuple[str, float, bool, str, float, bool] | None:
+    """Returns (chosen_seq, chosen_score, chosen_feasible, rejected_seq,
+    rejected_score, rejected_feasible) for this sampled candidate pair, or
+    None if it carries no training signal.
 
     pairing_mode="feasible_only": both candidates are already guaranteed
     feasible by load_scored_sequences(), so this is just the original
@@ -169,33 +184,54 @@ def _pick_chosen_rejected(
     good the objective looks). Both infeasible carries no useful signal
     (skipped). Both feasible falls through to the same score-based rule as
     feasible_only.
+
+    pairing_mode="feasibility_aware": same mixed-pair rule as
+    "lexicographic" (feasible side always wins). Unlike "lexicographic",
+    both-infeasible pairs are NOT skipped -- they're returned with an
+    arbitrary (first-as-chosen) assignment, since the feasibility_aware
+    ORPT loss's infeasible-vs-infeasible term is symmetric in the two sides
+    and doesn't use the objective score at all for that branch.
     """
     first_sequence, first_score, first_feasible = first
     second_sequence, second_score, second_feasible = second
 
-    if pairing_mode == "lexicographic" and first_feasible != second_feasible:
+    feasibility_ranked = pairing_mode in ("lexicographic", "feasibility_aware")
+
+    if feasibility_ranked and first_feasible != second_feasible:
         if first_feasible:
-            return first_sequence, first_score, second_sequence, second_score
-        return second_sequence, second_score, first_sequence, first_score
+            return first_sequence, first_score, True, second_sequence, second_score, False
+        return second_sequence, second_score, True, first_sequence, first_score, False
 
     if pairing_mode == "lexicographic" and not first_feasible and not second_feasible:
         return None
 
+    if pairing_mode == "feasibility_aware" and not first_feasible and not second_feasible:
+        return first_sequence, first_score, False, second_sequence, second_score, False
+
     if first_score == second_score:
         return None
     if first_score > second_score:
-        return first_sequence, first_score, second_sequence, second_score
-    return second_sequence, second_score, first_sequence, first_score
+        return first_sequence, first_score, first_feasible, second_sequence, second_score, second_feasible
+    return second_sequence, second_score, second_feasible, first_sequence, first_score, first_feasible
 
 
-def _build_pair(reference_sequence: str, result: tuple[str, float, str, float]) -> dict:
-    chosen_sequence, chosen_score, rejected_sequence, rejected_score = result
+def _build_pair(reference_sequence: str, result: tuple[str, float, bool, str, float, bool]) -> dict:
+    (
+        chosen_sequence,
+        chosen_score,
+        chosen_feasible,
+        rejected_sequence,
+        rejected_score,
+        rejected_feasible,
+    ) = result
     return {
         "reference_sequence": reference_sequence,
         "chosen_sequence": chosen_sequence,
         "rejected_sequence": rejected_sequence,
         "chosen_score": chosen_score,
         "rejected_score": rejected_score,
+        "chosen_feasible": chosen_feasible,
+        "rejected_feasible": rejected_feasible,
         "chosen": make_messages(reference_sequence, chosen_sequence),
         "rejected": make_messages(reference_sequence, rejected_sequence),
     }
@@ -207,7 +243,11 @@ def sample_pairs(
     num_pairs: int,
     rng: random.Random,
     pairing_mode: str = "feasible_only",
+    pair_type_weights: tuple[float, float, float] | None = None,
 ) -> list[dict]:
+    """pair_type_weights (mixed, both_feasible, both_infeasible): only used
+    by pairing_mode="feasibility_aware" -- see its branch below for why this
+    doesn't default to the raw pool's combinatorics."""
     max_attempts = max(num_pairs * 50, 200)
 
     if pairing_mode == "lexicographic":
@@ -257,6 +297,79 @@ def sample_pairs(
             )
         return pairs
 
+    if pairing_mode == "feasibility_aware":
+        feasible = [s for s in scored_sequences if s[2]]
+        infeasible = [s for s in scored_sequences if not s[2]]
+        if not feasible:
+            raise ValueError(
+                "No feasible sequences available for feasibility_aware pairing "
+                f"(0 of {len(scored_sequences)} candidates satisfy the similarity "
+                "constraint) -- every pair needs a feasible side to supply either "
+                "the feasible-vs-feasible ranking signal or the 'infeasible loses' signal."
+            )
+
+        # Unlike the "lexicographic" branch above (which weights mixed vs
+        # both-feasible draws by how many of each actually exist, matching
+        # what a uniform draw over the whole pool would produce), this does
+        # NOT sample proportional to the raw pool's feasible/infeasible
+        # combinatorics: on real BO trajectory data only ~5-10% of candidates
+        # are feasible, so a combinatorics-proportional draw is >90%
+        # both-infeasible and <1% both-feasible (confirmed on real data:
+        # 0.4% ff / 6.5% fi / 93.1% ii out of 14000 pairs at milestone 14 of
+        # peptide_100task_orpt_fa) -- starving the feasible-vs-feasible
+        # ranking term of almost all its training signal, which directly
+        # undermines this loss's whole point (see fa_orpt/loss.py's
+        # docstring: the DPO-style loss's failure mode is specifically about
+        # feasible-vs-feasible ranking not getting a meaningful margin).
+        # Instead, target an even three-way mix by default (pair_type_weights),
+        # falling back to whichever of the three types the pool can actually
+        # supply (both-feasible needs >=2 feasible candidates, both-infeasible
+        # needs >=2 infeasible candidates; a pair type with zero available
+        # weight has its share redistributed across the remaining types).
+        if pair_type_weights is None:
+            pair_type_weights = DEFAULT_FEASIBILITY_AWARE_PAIR_TYPE_MIX
+        mixed_weight, both_feasible_weight, both_infeasible_weight = pair_type_weights
+        can_mixed = bool(infeasible)
+        can_both_feasible = len(feasible) >= 2
+        can_both_infeasible = len(infeasible) >= 2
+
+        total_weight = (
+            (mixed_weight if can_mixed else 0.0)
+            + (both_feasible_weight if can_both_feasible else 0.0)
+            + (both_infeasible_weight if can_both_infeasible else 0.0)
+        )
+        if total_weight <= 0:
+            raise ValueError(
+                f"Need at least 2 usable scored sequences to pair, got {len(scored_sequences)}."
+            )
+        mixed_probability = (mixed_weight / total_weight) if can_mixed else 0.0
+        both_feasible_probability = (both_feasible_weight / total_weight) if can_both_feasible else 0.0
+
+        pairs = []
+        attempts = 0
+        while len(pairs) < num_pairs and attempts < max_attempts:
+            attempts += 1
+            draw = rng.random()
+            if can_mixed and draw < mixed_probability:
+                first, second = rng.choice(feasible), rng.choice(infeasible)
+            elif can_both_feasible and draw < mixed_probability + both_feasible_probability:
+                first, second = rng.sample(feasible, 2)
+            elif can_both_infeasible:
+                first, second = rng.sample(infeasible, 2)
+            else:
+                continue
+            result = _pick_chosen_rejected(first, second, pairing_mode)
+            if result is None:
+                continue
+            pairs.append(_build_pair(reference_sequence, result))
+
+        if len(pairs) < num_pairs:
+            raise ValueError(
+                f"Could only create {len(pairs)} pairs out of requested {num_pairs}. "
+                "Too many tied scores among feasible candidates may be present."
+            )
+        return pairs
+
     pairs = []
     attempts = 0
     while len(pairs) < num_pairs and attempts < max_attempts:
@@ -283,15 +396,33 @@ def write_csv(pairs: list[dict], output_csv: Path) -> None:
         "rejected_sequence",
         "chosen_score",
         "rejected_score",
+        "chosen_feasible",
+        "rejected_feasible",
     ]
     with output_csv.open("w", newline="") as f_out:
         writer = csv.DictWriter(f_out, fieldnames=fieldnames)
         writer.writeheader()
         for pair in pairs:
-            writer.writerow({fieldname: pair[fieldname] for fieldname in fieldnames})
+            writer.writerow(
+                {
+                    fieldname: (
+                        int(pair[fieldname])
+                        if fieldname in ("chosen_feasible", "rejected_feasible")
+                        else pair[fieldname]
+                    )
+                    for fieldname in fieldnames
+                }
+            )
 
 
 def write_jsonl(pairs: list[dict], output_jsonl: Path) -> None:
+    """Extra keys beyond "chosen"/"rejected" (chosen_feasible,
+    rejected_feasible) are ignored by torchtune's stock
+    preference_dataset/PreferenceDataset, which only reads "chosen" and
+    "rejected" -- so this is safe for the existing DPO ("dpo") loss path.
+    fa_orpt.dataset.FeasibilityAwarePreferenceDataset is what actually reads
+    the feasibility fields back out.
+    """
     output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     with output_jsonl.open("w") as f_out:
         for pair in pairs:
@@ -300,6 +431,8 @@ def write_jsonl(pairs: list[dict], output_jsonl: Path) -> None:
                     {
                         "chosen": pair["chosen"],
                         "rejected": pair["rejected"],
+                        "chosen_feasible": int(pair["chosen_feasible"]),
+                        "rejected_feasible": int(pair["rejected_feasible"]),
                     }
                 )
                 + "\n"
@@ -340,7 +473,23 @@ def parse_args() -> argparse.Namespace:
         default="feasible_only",
         help="'feasible_only' (default): drop infeasible candidates, rank remaining pairs "
         "by objective score only (original behavior). 'lexicographic': keep infeasible "
-        "candidates and rank feasibility ahead of objective score.",
+        "candidates and rank feasibility ahead of objective score, skipping both-infeasible "
+        "draws (no signal). 'feasibility_aware': like 'lexicographic', but also keeps "
+        "both-infeasible pairs (for the feasibility_aware ORPT loss's infeasible-vs-infeasible "
+        "term) instead of skipping them.",
+    )
+    parser.add_argument(
+        "--feasibility-aware-mix",
+        type=float,
+        nargs=3,
+        metavar=("MIXED_WEIGHT", "BOTH_FEASIBLE_WEIGHT", "BOTH_INFEASIBLE_WEIGHT"),
+        default=list(DEFAULT_FEASIBILITY_AWARE_PAIR_TYPE_MIX),
+        help="Only used by --pairing-mode feasibility_aware: relative draw weights for "
+        "(mixed, both-feasible, both-infeasible) pair types, renormalized over whichever "
+        "types the pool can actually supply. Default is an even 1:1:1 mix -- NOT "
+        "proportional to the raw pool's feasible/infeasible combinatorics, since real BO "
+        "trajectory data is only ~5-10%% feasible and a combinatorics-proportional draw "
+        "would starve the feasible-vs-feasible ranking term of training signal.",
     )
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
@@ -378,6 +527,7 @@ def main() -> None:
                 num_pairs=args.pairs_per_input,
                 rng=rng,
                 pairing_mode=args.pairing_mode,
+                pair_type_weights=tuple(args.feasibility_aware_mix),
             )
         )
 

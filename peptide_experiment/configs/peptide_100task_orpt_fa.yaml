@@ -1,0 +1,46 @@
+# Feasibility-aware ORPT variant: same beta=0.25/lr=2e-5/epoch=1 as
+# peptide_100task_orpt_beta0.25.yaml (naive DPO-style ORPT) and
+# peptide_100task_orpt_lexicographic.yaml, but with orpt_loss_type: fa_orpt
+# and orpt_pairing_mode: feasibility_aware instead of the DPO-style loss.
+# See fine-tuning/peptides/fa_orpt/loss.py and
+# imp_plan/04_orpt_future_plan.md's 2026-07-22 entry for the rationale: the
+# DPO-style loss shows both chosen and rejected u = log pi_theta - log
+# pi_ref decreasing together with an insignificant margin. fa_orpt instead
+# separates the feasible-vs-feasible ranking signal (preserve ranking, don't
+# punish a losing-but-feasible candidate too hard) from the
+# feasible-vs-infeasible/infeasible-vs-infeasible signal (push infeasible
+# candidates down hard).
+#
+# Reuses peptide_100task_bolt_v1's already-completed BOLT-<m> checkpoints and
+# trajectory data via symlinks into this experiment_id's run_dir, same
+# pattern as peptide_100task_orpt_beta0.25.yaml / _lexicographic.yaml, so
+# only build_orpt_pairs + train_orpt_milestone need to run (no SFT/BO
+# re-run). oracle_budget/init_size/bsz are unused by that path but required
+# by ExperimentConfig, kept identical to peptide_100task_bolt_v1 for
+# consistency.
+#
+# fa_orpt_* hyperparameters left at the experiment-spec defaults (see
+# fa_orpt/loss.py) for this first run -- a controlled comparison against
+# peptide_100task_orpt_beta0.25 (DPO baseline) and
+# peptide_100task_orpt_lexicographic (feasibility-gated but not
+# feasibility-graded) at the same orpt_beta/orpt_lr.
+#
+# cuda_visible_devices intentionally left unset here -- GPU availability on
+# this shared box is volatile (see BOLT/imp_plan session notes), verify
+# which GPU is actually free before setting this and launching training.
+experiment_id: peptide_100task_orpt_fa
+milestones: [14, 28, 42, 56, 70, 84, 100]
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+build_orpt: true
+orpt_epochs: 1
+orpt_pairs_per_task: 1000
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_pairing_mode: feasibility_aware
+orpt_loss_type: fa_orpt
+orpt_torchtune_recipe: fa_orpt/recipe.py
+orpt_torchtune_config: qwen_2_5_3B_lora_fa_orpt.yaml
