@@ -162,6 +162,15 @@ class LoRAFAORPTRecipeDistributed(LoRADPORecipeDistributed):
             "fa_orpt/ff_mean_margin": 0,
             "fa_orpt/fi_count": 0,
             "fa_orpt/fi_mean_margin": 0,
+            # Raw output-layer logit (pre-softmax, NOT the reference-relative
+            # u used above) by the same three candidate-role pools -- a
+            # divergence/collapse safety-net (see logits/chosen, logits/
+            # rejected above) broken out by feasibility instead of just
+            # chosen/rejected role, so a collapse specific to one category
+            # doesn't hide inside the overall batch average.
+            "fa_orpt/chosen_feasible_mean_logit": 0,
+            "fa_orpt/losing_feasible_mean_logit": 0,
+            "fa_orpt/infeasible_mean_logit": 0,
         }
         num_tokens = 0
 
@@ -205,8 +214,20 @@ class LoRAFAORPTRecipeDistributed(LoRADPORecipeDistributed):
                     policy_rejected_logits,
                 ) = self.concatenated_forward(self._model, dpo_batch)
 
-                policy_chosen_logits_mean = policy_chosen_logits.detach().mean()
-                policy_rejected_logits_mean = policy_rejected_logits.detach().mean()
+                # Per-example mean raw logit (averaged over seq_len/vocab
+                # only, not over the batch dim) -- kept around long enough to
+                # mask by feasibility below; .mean() over this still equals
+                # the old whole-tensor .mean() exactly, since every example
+                # in a padded batch reduces over the same-shaped (seq_len,
+                # vocab) slice.
+                policy_chosen_logits_per_example = policy_chosen_logits.detach().mean(
+                    dim=tuple(range(1, policy_chosen_logits.dim()))
+                )
+                policy_rejected_logits_per_example = policy_rejected_logits.detach().mean(
+                    dim=tuple(range(1, policy_rejected_logits.dim()))
+                )
+                policy_chosen_logits_mean = policy_chosen_logits_per_example.mean()
+                policy_rejected_logits_mean = policy_rejected_logits_per_example.mean()
 
                 del policy_chosen_logits, policy_rejected_logits
 
@@ -304,6 +325,18 @@ class LoRAFAORPTRecipeDistributed(LoRADPORecipeDistributed):
                 running_metrics["fa_orpt/fi_mean_margin"] += scaling_factor * masked_mean(
                     chosen_rewards - rejected_rewards, mask_fi
                 )
+                running_metrics["fa_orpt/chosen_feasible_mean_logit"] += scaling_factor * masked_mean(
+                    policy_chosen_logits_per_example, mask_chosen_feasible
+                )
+                running_metrics["fa_orpt/losing_feasible_mean_logit"] += scaling_factor * masked_mean(
+                    policy_rejected_logits_per_example, mask_rejected_feasible
+                )
+                running_metrics["fa_orpt/infeasible_mean_logit"] += scaling_factor * pooled_mean(
+                    [
+                        (policy_chosen_logits_per_example, mask_chosen_infeasible),
+                        (policy_rejected_logits_per_example, mask_rejected_infeasible),
+                    ]
+                )
 
                 loss.backward()
 
@@ -371,6 +404,9 @@ class LoRAFAORPTRecipeDistributed(LoRADPORecipeDistributed):
                             "fa_orpt/ff_mean_margin",
                             "fa_orpt/fi_count",
                             "fa_orpt/fi_mean_margin",
+                            "fa_orpt/chosen_feasible_mean_logit",
+                            "fa_orpt/losing_feasible_mean_logit",
+                            "fa_orpt/infeasible_mean_logit",
                         ):
                             log_dict[key] = running_metrics[key].cpu()
                         if self._log_peak_memory_stats:
