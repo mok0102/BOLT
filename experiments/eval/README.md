@@ -91,3 +91,14 @@ glob).
 Every `plot_*.py` accepts a comma-separated `--results-dir` list and
 concatenates them before plotting -- useful if two manifests were run
 separately and need to appear together.
+
+```bash
+python experiments/eval/plot_incumbent_vs_pool_size.py \
+    --results-dir experiments/eval/results/poc20_four_arm
+
+python experiments/eval/plot_fixed_target_rejection_bo.py \
+    --results-dir experiments/eval/results/poc20_four_arm
+
+python experiments/eval/plot_fixed_budget_rejection_bo.py \
+    --results-dir experiments/eval/results/poc20_four_arm
+```
