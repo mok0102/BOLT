@@ -1,0 +1,115 @@
+# Same as qwen_2_5_3B_lora.yaml (multi-device LoRA SFT for BOLT-style peptide
+# training), except batch_size: 4 -> 32 -- a dedicated copy so this change
+# doesn't affect other experiments that still default to
+# qwen_2_5_3B_lora.yaml. Paired with qwen_2_5_3B_lora_fa_orpt.yaml (also
+# batch_size=32) for peptide_100task_bolt_orpt_fa_bsz32's SFT stage.
+#
+# All *_dir / *_files / *.path fields below are placeholders: peptide_experiment's
+# trajectory_chain.py always overrides them via CLI args, so this file is
+# portable across machines and doesn't need editing directly.
+#
+# To launch on 1 device, run from repo root:
+#   tune run --nnodes 1 --nproc_per_node 1 lora_finetune_distributed \
+#       --config fine-tuning/peptides/torchtune_config/qwen_2_5_3B_lora_bsz32.yaml
+
+output_dir: ./output/qwen_2_5_3B_lora_output  # overridden: output_dir=
+
+# Model Arguments
+model:
+  _component_: torchtune.models.qwen2_5.lora_qwen2_5_3b
+  lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
+  apply_lora_to_mlp: True
+  lora_rank: 4  # higher increases accuracy and memory
+  lora_alpha: 8  # usually alpha=2*rank
+  lora_dropout: 0.0
+
+tokenizer:
+  _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
+  path: ./ckpt/Qwen2.5-3B-Instruct/vocab.json  # overridden: tokenizer.path=
+  merges_file: ./ckpt/Qwen2.5-3B-Instruct/merges.txt  # overridden: tokenizer.merges_file=
+  max_seq_len: null
+
+# Dataset
+dataset:
+  _component_: torchtune.datasets.chat_dataset
+  source: json
+  data_files: ./train_data/train_data.jsonl  # overridden: dataset.data_files=
+  split: train
+  conversation_column: messages
+  conversation_style: openai
+  train_on_input: false
+  packed: false
+
+checkpointer:
+  _component_: torchtune.training.FullModelHFCheckpointer
+  checkpoint_dir: ./ckpt/Qwen2.5-3B-Instruct  # overridden: checkpointer.checkpoint_dir=
+  checkpoint_files: [
+    model-00001-of-00002.safetensors,
+    model-00002-of-00002.safetensors,
+  ]
+  recipe_checkpoint: null
+  output_dir: ${output_dir}
+  model_type: QWEN2
+resume_from_checkpoint: False
+# Save a full merged checkpoint (not adapter-only) so downstream stages
+# (sampling, ranking-stage checkpointer/reference) can load it exactly like
+# a normal HF checkpoint dir, with no separate merge step.
+save_adapter_weights_only: False
+
+# Fine-tuning arguments
+# Fixed (not null): peptide_script.sh and peptide_script_dpo.sh both run this
+# exact SFT stage independently for the same task-count milestone, and the
+# BOLT-SFT vs ORPT comparison requires them to land on the same pi_sft
+# checkpoint rather than two different random inits of "the same recipe".
+seed: 42
+shuffle: true
+batch_size: 32
+epochs: 5
+optimizer:
+  _component_: torch.optim.AdamW
+  fused: True
+  weight_decay: 0.01
+  lr: 3e-4
+lr_scheduler:
+  _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
+  num_warmup_steps: 20
+loss:
+  _component_: torchtune.modules.loss.CEWithChunkedOutputLoss
+max_steps_per_epoch: null
+gradient_accumulation_steps: 1
+clip_grad_norm: null
+compile: False
+
+# Training env
+device: cuda
+
+# Memory management
+enable_activation_checkpointing: True
+enable_activation_offloading: True
+
+# Reduced precision
+dtype: bf16
+
+# Logging
+metric_logger:
+  _component_: torchtune.training.metric_logging.TensorBoardLogger
+  log_dir: ./tensorboard  # overridden: metric_logger.log_dir=
+  organize_logs: True
+log_every_n_steps: 1
+log_peak_memory_stats: False
+
+# Profiler (disabled)
+profiler:
+  _component_: torchtune.training.setup_torch_profiler
+  enabled: False
+  output_dir: ${output_dir}/profiling_outputs
+  cpu: True
+  cuda: True
+  profile_memory: False
+  with_stack: False
+  record_shapes: True
+  with_flops: False
+  wait_steps: 5
+  warmup_steps: 3
+  active_steps: 2
+  num_cycles: 1

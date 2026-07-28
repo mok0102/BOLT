@@ -30,10 +30,24 @@ MAX_SAMPLES_PER_CALL = 2000
 def _run(cmd: list, cwd: Path, cfg: ExperimentConfig | None = None) -> None:
     printable = " ".join(str(c) for c in cmd)
     print(f"+ ({cwd}) {printable}", flush=True)
-    env = None
+    # When this driver is itself attached to a real terminal (as opposed to a
+    # redirected/nohup'd log file), the child inherits that tty on stdin/stdout.
+    # Something in the LOLBO dependency chain then thinks it's interactive and
+    # opens a pager (man/git/pydoc/rich all pick one up from PAGER/MANPAGER),
+    # which blocks forever waiting for a keypress nobody will send -- observed
+    # as a 13h+ hung run_lolbo child stuck in do_wait with ~0% CPU. Forcing
+    # non-interactive pagers plus a closed stdin closes off every route to
+    # that hang, regardless of which dependency triggers it.
+    env = {**os.environ, "PAGER": "cat", "MANPAGER": "cat", "GIT_PAGER": "cat"}
     if cfg is not None and cfg.cuda_visible_devices is not None:
-        env = {**os.environ, "CUDA_VISIBLE_DEVICES": cfg.cuda_visible_devices}
-    subprocess.run([str(c) for c in cmd], cwd=str(cwd), check=True, env=env)
+        env["CUDA_VISIBLE_DEVICES"] = cfg.cuda_visible_devices
+    subprocess.run(
+        [str(c) for c in cmd],
+        cwd=str(cwd),
+        check=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 def cleanup_intermediate_epochs(ckpt_dir: Path, final_ckpt: Path) -> None:

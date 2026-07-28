@@ -1,0 +1,64 @@
+# 4-arm PoC comparison: BOLT (SFT-only) vs ORPT (plain DPO) vs ORPT-FA
+# (feasibility-aware loss) vs ORPT-LEX (lexicographic pairing), at each of
+# their shared milestones [5, 10, 20]. Each arm is its own experiment_id/
+# run_dir (peptide_experiment/configs/peptide_poc20_{bolt,orpt,orpt_fa,orpt_lex}.yaml)
+# -- fully independent trajectory chains by design (see those configs'
+# header comments), sharing the same oracle_budget/init_size/bsz/sft_epochs/
+# similarity_threshold/heldout_tasks_override for a fair comparison.
+#
+# checkpoint_dir is only read by generate_raw_proposals.py -- once raw
+# proposals exist under <run_dir>/eval_raw/, the other scripts here
+# (incumbent_vs_pool_size.py, fixed_target_rejection_bo.py,
+# fixed_budget_rejection_bo.py) never touch it.
+models:
+  - arm: BOLT
+    milestone: 5
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/BOLT-5/epoch_4
+  - arm: BOLT
+    milestone: 10
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/BOLT-10/epoch_4
+  - arm: BOLT
+    milestone: 20
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/BOLT-20/epoch_4
+
+  - arm: ORPT
+    milestone: 5
+    run_dir: runs/peptide_poc20_orpt
+    checkpoint_dir: runs/peptide_poc20_orpt/checkpoints/ORPT-5/epoch_0
+  - arm: ORPT
+    milestone: 10
+    run_dir: runs/peptide_poc20_orpt
+    checkpoint_dir: runs/peptide_poc20_orpt/checkpoints/ORPT-10/epoch_0
+  - arm: ORPT
+    milestone: 20
+    run_dir: runs/peptide_poc20_orpt
+    checkpoint_dir: runs/peptide_poc20_orpt/checkpoints/ORPT-20/epoch_0
+
+  - arm: ORPT-FA
+    milestone: 5
+    run_dir: runs/peptide_poc20_orpt_fa
+    checkpoint_dir: runs/peptide_poc20_orpt_fa/checkpoints/ORPT-5/epoch_0
+  - arm: ORPT-FA
+    milestone: 10
+    run_dir: runs/peptide_poc20_orpt_fa
+    checkpoint_dir: runs/peptide_poc20_orpt_fa/checkpoints/ORPT-10/epoch_0
+  - arm: ORPT-FA
+    milestone: 20
+    run_dir: runs/peptide_poc20_orpt_fa
+    checkpoint_dir: runs/peptide_poc20_orpt_fa/checkpoints/ORPT-20/epoch_0
+
+  - arm: ORPT-LEX
+    milestone: 5
+    run_dir: runs/peptide_poc20_orpt_lex
+    checkpoint_dir: runs/peptide_poc20_orpt_lex/checkpoints/ORPT-5/epoch_0
+  - arm: ORPT-LEX
+    milestone: 10
+    run_dir: runs/peptide_poc20_orpt_lex
+    checkpoint_dir: runs/peptide_poc20_orpt_lex/checkpoints/ORPT-10/epoch_0
+  - arm: ORPT-LEX
+    milestone: 20
+    run_dir: runs/peptide_poc20_orpt_lex
+    checkpoint_dir: runs/peptide_poc20_orpt_lex/checkpoints/ORPT-20/epoch_0

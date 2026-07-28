@@ -32,7 +32,7 @@ experiment_id: peptide_100task_orpt_fa
 milestones: [14, 28, 42, 56, 70, 84, 100]
 oracle_budget: 5000
 init_size: 500
-bsz: 50
+bsz: 50 #  매 oracle-call 라운드마다 BO가 한 번에 몇 개의 후보 펩타이드 시퀀스를 제안/평가할지를 정하는 값
 sft_epochs: 5
 similarity_threshold: 0.75
 build_orpt: true

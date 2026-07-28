@@ -1,0 +1,33 @@
+# 4-arm PoC -- ORPT (plain DPO) arm. Fully independent trajectory_chain from
+# task 0 (no symlink reuse of peptide_poc20_bolt.yaml's data) -- see that
+# file's header for why: once build_orpt: true, checkpoint_to_sample_from()
+# samples tasks past the first milestone from this arm's own ORPT-<m>
+# checkpoint, so this arm's trajectories genuinely diverge from the BOLT-only
+# arm's from milestone 2 onward, and that divergence is what's being measured.
+#
+# oracle_budget/init_size/bsz/sft_epochs kept identical to
+# peptide_poc20_bolt.yaml for a fair comparison (not because of any
+# symlink/reuse requirement here).
+#
+# orpt_beta=0.25 / orpt_lr=2.0e-5 / orpt_epochs=1: the grid-search-confirmed
+# winning ORPT hyperparameters (matches all 3 real 100-task ORPT configs),
+# reused as-is rather than re-tuned for this smaller PoC. orpt_pairing_mode
+# left at its default (feasible_only) -- the "plain DPO" arm.
+#
+# NOTE the orpt_lr scientific-notation gotcha (README.md): 2.0e-5, not 2e-5,
+# or PyYAML parses it as a string, not a float.
+experiment_id: peptide_poc20_orpt
+milestones: [5, 10, 20]
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+heldout_tasks_override: [900, 901, 902, 903, 904]
+torchtune_config: poc_qwen_2_5_3B_lora_bsz32.yaml  # batch_size=32 across all 4 PoC arms
+build_orpt: true
+orpt_epochs: 1
+orpt_pairs_per_task: 1000
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_torchtune_config: poc_qwen_2_5_3B_lora_dpo_bsz32.yaml  # batch_size=32

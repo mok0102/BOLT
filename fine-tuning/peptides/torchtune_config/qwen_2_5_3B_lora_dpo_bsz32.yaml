@@ -1,0 +1,100 @@
+# Same as qwen_2_5_3B_lora_dpo.yaml (multi-device LoRA DPO/ORPT finetuning),
+# except batch_size: 4 -> 32 -- a dedicated copy so this change doesn't affect
+# other experiments that still default to qwen_2_5_3B_lora_dpo.yaml. Used by
+# the ORPT/ORPT-LEX arms of the 4-arm PoC (peptide_poc20_orpt.yaml /
+# peptide_poc20_orpt_lex.yaml), paired with qwen_2_5_3B_lora_bsz32.yaml (SFT
+# stage) and qwen_2_5_3B_lora_fa_orpt.yaml (already batch_size=32) for the
+# ORPT-FA arm -- batch_size=32 across every stage/arm in that PoC.
+#
+# All *_dir / *_files / *.path fields below are placeholders: peptide_experiment's
+# orpt.py always overrides them via CLI args, so this file is portable across
+# machines and doesn't need editing directly.
+#
+# To launch on 1 device, run from repo root:
+#   tune run --nnodes 1 --nproc_per_node 1 lora_dpo_distributed \
+#       --config fine-tuning/peptides/torchtune_config/qwen_2_5_3B_lora_dpo_bsz32.yaml
+
+output_dir: ./output/qwen_2_5_3B_lora_dpo_output  # overridden: output_dir=
+
+# Model Arguments -- same LoRA hyperparameters as qwen_2_5_3B_lora.yaml so the
+# only thing that differs between the BOLT-SFT and ORPT arms is the ranking/
+# fine-tuning stage itself, not the adapter capacity.
+model:
+  _component_: torchtune.models.qwen2_5.lora_qwen2_5_3b
+  lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
+  apply_lora_to_mlp: True
+  lora_rank: 8  # higher increases accuracy and memory
+  lora_alpha: 16  # usually alpha=2*rank
+  lora_dropout: 0.0
+
+tokenizer:
+  _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
+  path: ./ckpt/Qwen2.5-3B-Instruct/vocab.json  # overridden: tokenizer.path=
+  merges_file: ./ckpt/Qwen2.5-3B-Instruct/merges.txt  # overridden: tokenizer.merges_file=
+  max_seq_len: null
+
+# Dataset -- {"chosen": [...messages...], "rejected": [...messages...]} JSONL,
+# exactly what make_dpo_train_data_csv.py's write_jsonl() emits; default
+# "chosen"/"rejected" column names match it, no column_map needed.
+dataset:
+  _component_: torchtune.datasets.preference_dataset
+  source: json
+  data_files: ./orpt_pairs/orpt_pairs.jsonl  # overridden: dataset.data_files=
+  split: train
+  train_on_input: false
+
+checkpointer:
+  # Overridden to that milestone's own BOLT-<m> checkpoint: this loads BOLT-<m>'s
+  # weights as both pi_theta's initialization and (via the LoRA adapter-disable
+  # trick in lora_dpo_distributed.py) the frozen pi_ref -- no separate
+  # ref_checkpointer needed.
+  _component_: torchtune.training.FullModelHFCheckpointer
+  checkpoint_dir: ./ckpt/Qwen2.5-3B-Instruct  # overridden: checkpointer.checkpoint_dir=
+  checkpoint_files: [
+    model-00001-of-00002.safetensors,
+    model-00002-of-00002.safetensors,
+  ]
+  recipe_checkpoint: null
+  output_dir: ${output_dir}
+  model_type: QWEN2
+resume_from_checkpoint: False
+save_adapter_weights_only: False
+
+# Fine-tuning arguments
+seed: 42
+shuffle: true
+batch_size: 32
+epochs: 1  # DPO default; separate knob from sft_epochs (cfg.orpt_epochs)
+optimizer:
+  _component_: torch.optim.AdamW
+  fused: True
+  weight_decay: 0.01
+  lr: 3e-4
+lr_scheduler:
+  _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
+  num_warmup_steps: 20
+loss:
+  _component_: torchtune.rlhf.loss.DPOLoss
+  beta: 0.1  # overridden: loss.beta=
+  label_smoothing: 0
+max_steps_per_epoch: null
+gradient_accumulation_steps: 1
+compile: False
+
+# Training env
+device: cuda
+
+# Memory management
+enable_activation_checkpointing: True
+enable_activation_offloading: True
+
+# Reduced precision
+dtype: bf16
+
+# Logging
+metric_logger:
+  _component_: torchtune.training.metric_logging.TensorBoardLogger
+  log_dir: ./tensorboard  # overridden: metric_logger.log_dir=
+  organize_logs: True
+log_every_n_steps: 1
+log_peak_memory_stats: False
