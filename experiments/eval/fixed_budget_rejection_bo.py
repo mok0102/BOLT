@@ -52,8 +52,12 @@ DEFAULT_MIN_FEASIBLE = 5
 COVERAGE_FIELDS = [
     "arm", "milestone", "task_set", "n_tasks", "n_ran_bo", "coverage_rate",
     "min_pool_size", "mean_pool_size", "max_pool_size", "mean_best_feasible_incumbent",
+    "mean_rejection_rate",
 ]
-PER_TASK_FIELDS = ["arm", "milestone", "task_set", "task_idx", "pool_size", "best_feasible_incumbent", "k", "best_mic"]
+PER_TASK_FIELDS = [
+    "arm", "milestone", "task_set", "task_idx", "pool_size", "draws_used", "rejection_rate",
+    "best_feasible_incumbent", "k", "best_mic",
+]
 SUMMARY_FIELDS = ["arm", "milestone", "task_set", "k", "n_tasks_ran_bo", "mean_best_mic"]
 
 
@@ -66,14 +70,18 @@ def run_for_spec_task_set(
 
     n_ran_bo = 0
     pool_sizes: list[int] = []
+    rejection_rates: list[float] = []
     feasible_incumbents: list[float] = []
     bo_rows: list[dict] = []
     for task_idx in task_ids:
         built = build_bo_pool(cfg, task_idx, raw_dir, work_dir, target=None, min_feasible=min_feasible)
         if built is None:
             continue
-        init_path, scores_path, pool_size = built
+        init_path, scores_path, pool_size, draws_used = built
         pool_sizes.append(pool_size)
+        rejection_rate = 1 - pool_size / draws_used if draws_used else None
+        if rejection_rate is not None:
+            rejection_rates.append(rejection_rate)
         cfg.init_size = pool_size
         try:
             csv_path = run_bo(cfg, task_idx, work_dir, run_id=run_id, init_path=init_path, scores_path=scores_path)
@@ -87,7 +95,8 @@ def run_for_spec_task_set(
         for k in bo_k_checkpoints(cfg):
             bo_rows.append({
                 "arm": spec.arm, "milestone": spec.milestone, "task_set": task_set, "task_idx": task_idx,
-                "pool_size": pool_size, "best_feasible_incumbent": best_feasible_incumbent,
+                "pool_size": pool_size, "draws_used": draws_used, "rejection_rate": rejection_rate,
+                "best_feasible_incumbent": best_feasible_incumbent,
                 "k": k, "best_mic": _best_mic_at_k(csv_path, pool_size, k),
             })
 
@@ -100,6 +109,9 @@ def run_for_spec_task_set(
         "max_pool_size": max(pool_sizes) if pool_sizes else None,
         "mean_best_feasible_incumbent": (
             sum(feasible_incumbents) / len(feasible_incumbents) if feasible_incumbents else None
+        ),
+        "mean_rejection_rate": (
+            sum(rejection_rates) / len(rejection_rates) if rejection_rates else None
         ),
     }
     return coverage_row, bo_rows

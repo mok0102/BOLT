@@ -4,11 +4,17 @@ reject-and-discard init pool (whatever a fixed sampling budget yields),
 across #tasks trained (milestone). Separate figures per task_set
 (trainset / heldout).
 
-Two figure pairs:
+Three figures:
 - fig1_bo_objective_by_milestone_<task_set>.png: headline chart at a fixed k
   (default 5000 = the full oracle budget, i.e. the "final" BO outcome).
 - fig2_bo_objective_k_sensitivity_<task_set>.png: small multiples, one
   subplot per k, to show the trend isn't an artifact of the chosen k.
+- fig3_rejection_rate_by_milestone_<task_set>.png: mean rejection rate
+  (1 - pool_size / draws_used, i.e. how much of the raw sampling budget a
+  reject-and-discard policy had to throw away to build the pool it did get)
+  vs. milestone, one line per arm. rejection_rate is per-task/per-milestone,
+  not per-k, so this dedupes per_task rows to one per task before
+  aggregating.
 
 coverage_rate / pool-size spread are left as CSV-only (no dedicated chart).
 
@@ -109,6 +115,42 @@ def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path) -> None:
     print(f"Wrote {out_path}")
 
 
+def plot_fig3(df: pd.DataFrame, task_set: str, out_path: Path) -> None:
+    sub = df[df["task_set"] == task_set].dropna(subset=["rejection_rate"])
+    sub = sub.drop_duplicates(subset=["arm", "milestone", "task_idx"])
+    if sub.empty:
+        print(f"[plot_fixed_budget_rejection_bo] no rejection-rate data for task_set={task_set}, skipping {out_path}")
+        return
+    milestones = sorted(sub["milestone"].unique())
+    arms = sorted_arms(sub)
+    colors = arm_colors(arms)
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    for arm in arms:
+        arm_sub = sub[sub["arm"] == arm]
+        stats = arm_sub.groupby("milestone")["rejection_rate"].agg(["mean", "std"]).reindex(milestones)
+        ax.plot(milestones, stats["mean"], color=colors[arm], linewidth=2, marker="o", markersize=8, label=arm)
+        ax.fill_between(
+            milestones,
+            stats["mean"] - stats["std"].fillna(0),
+            stats["mean"] + stats["std"].fillna(0),
+            color=colors[arm],
+            alpha=0.15,
+            linewidth=0,
+        )
+    ax.set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
+    ax.set_ylabel("rejection rate (1 - pool size / raw draws)", color=MUTED_TEXT)
+    ax.set_xticks(milestones)
+    style_axis(ax)
+    ax.legend(frameon=False)
+    fig.suptitle(f"Rejection rate vs. #tasks trained (fixed budget, {TASK_SET_LABEL[task_set]})", color="#0b0b0b")
+    fig.subplots_adjust(left=0.18, top=0.85, bottom=0.12)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"Wrote {out_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
@@ -123,6 +165,7 @@ def main() -> None:
     for task_set in ("trainset", "heldout"):
         plot_fig1(df, task_set, plots_dir / f"fig1_bo_objective_by_milestone_{task_set}.png", k=args.k)
         plot_fig2(df, task_set, plots_dir / f"fig2_bo_objective_k_sensitivity_{task_set}.png")
+        plot_fig3(df, task_set, plots_dir / f"fig3_rejection_rate_by_milestone_{task_set}.png")
 
 
 if __name__ == "__main__":

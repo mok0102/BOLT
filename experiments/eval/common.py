@@ -177,23 +177,29 @@ def build_bo_pool(
     work_dir: Path,
     target: int | None = None,
     min_feasible: int = 5,
-) -> tuple[Path, Path, int] | None:
+) -> tuple[Path, Path, int, int] | None:
     """Build a BO init pool from raw generations, real rejection sampling
     only (no synthetic top-up/padding). Idempotent on existing
-    task_XXXX_init.txt/_scores.csv in work_dir.
+    task_XXXX_init.txt/_scores.csv in work_dir (draws_used is still
+    recomputed on the idempotent path -- it's a cheap raw-jsonl rescan, no
+    apex_wrapper call).
 
     target=None: use the full real-rejection-sampled feasible pool, skip if
-    fewer than min_feasible survive (the "fixed budget" mode).
+    fewer than min_feasible survive (the "fixed budget" mode). draws_used is
+    every raw sequence generated (the whole sampling budget was consumed).
     target=<int>: require exactly `target` feasible unique sequences, skip
     (return None) if fewer are available -- no on-demand extra sampling (the
-    "fixed target" mode).
+    "fixed target" mode). draws_used is the raw draw index at which the
+    `target`-th feasible sequence appeared.
+
+    Returns (init_path, scores_path, pool_size, draws_used); rejection_rate
+    = 1 - pool_size / draws_used is left to callers (they already vary in
+    what else they log alongside it).
     """
     from apex_oracle import apex_wrapper
 
     init_path = work_dir / f"task_{task_idx:04d}_init.txt"
     scores_path = work_dir / f"task_{task_idx:04d}_scores.csv"
-    if init_path.exists() and scores_path.exists():
-        return init_path, scores_path, read_pool_size(work_dir, task_idx)
 
     pool = feasible_pool_with_draw_counts(cfg, task_idx, raw_dir, max_needed=target)
     seqs = [s for s, _ in pool]
@@ -202,12 +208,18 @@ def build_bo_pool(
         return None
     if target is not None:
         seqs = seqs[:target]
+        draws_used = pool[target - 1][1]
+    else:
+        draws_used = len(load_raw_generations(raw_dir, task_idx))
+
+    if init_path.exists() and scores_path.exists():
+        return init_path, scores_path, read_pool_size(work_dir, task_idx), draws_used
 
     scores = list(-apex_wrapper(seqs)[:, 0])
     work_dir.mkdir(parents=True, exist_ok=True)
     init_path.write_text("\n".join(seqs) + "\n")
     scores_path.write_text("\n".join(f"{s:.8f}" for s in scores) + "\n")
-    return init_path, scores_path, len(seqs)
+    return init_path, scores_path, len(seqs), draws_used
 
 
 def write_csv(rows: list[dict], path: Path, fieldnames: list[str]) -> None:

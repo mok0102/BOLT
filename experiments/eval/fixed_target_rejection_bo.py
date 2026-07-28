@@ -50,10 +50,11 @@ DEFAULT_TARGET_POOL_SIZES = [10, 20, 50]
 COVERAGE_FIELDS = [
     "arm", "milestone", "task_set", "target_pool_size",
     "n_tasks", "n_ran_bo", "coverage_rate", "mean_best_feasible_incumbent",
+    "mean_rejection_rate",
 ]
 PER_TASK_FIELDS = [
     "arm", "milestone", "task_set", "task_idx", "target_pool_size",
-    "best_feasible_incumbent", "k", "best_mic",
+    "draws_used", "rejection_rate", "best_feasible_incumbent", "k", "best_mic",
 ]
 SUMMARY_FIELDS = ["arm", "milestone", "task_set", "target_pool_size", "k", "n_tasks_ran_bo", "mean_best_mic"]
 
@@ -66,13 +67,17 @@ def run_for_spec_task_set_target(
     run_id = f"fixedtarget-{task_set}-{spec.arm}-{spec.milestone}-t{target}"
 
     n_ran_bo = 0
+    rejection_rates: list[float] = []
     feasible_incumbents: list[float] = []
     bo_rows: list[dict] = []
     for task_idx in task_ids:
         built = build_bo_pool(cfg, task_idx, raw_dir, work_dir, target=target)
         if built is None:
             continue
-        init_path, scores_path, pool_size = built
+        init_path, scores_path, pool_size, draws_used = built
+        rejection_rate = 1 - pool_size / draws_used if draws_used else None
+        if rejection_rate is not None:
+            rejection_rates.append(rejection_rate)
         cfg.init_size = pool_size  # run_bo reads cfg.init_size; must match target exactly
         try:
             csv_path = run_bo(cfg, task_idx, work_dir, run_id=run_id, init_path=init_path, scores_path=scores_path)
@@ -86,7 +91,8 @@ def run_for_spec_task_set_target(
         for k in bo_k_checkpoints(cfg):
             bo_rows.append({
                 "arm": spec.arm, "milestone": spec.milestone, "task_set": task_set, "task_idx": task_idx,
-                "target_pool_size": target, "best_feasible_incumbent": best_feasible_incumbent,
+                "target_pool_size": target, "draws_used": draws_used, "rejection_rate": rejection_rate,
+                "best_feasible_incumbent": best_feasible_incumbent,
                 "k": k, "best_mic": _best_mic_at_k(csv_path, pool_size, k),
             })
 
@@ -96,6 +102,9 @@ def run_for_spec_task_set_target(
         "coverage_rate": n_ran_bo / len(task_ids) if task_ids else None,
         "mean_best_feasible_incumbent": (
             sum(feasible_incumbents) / len(feasible_incumbents) if feasible_incumbents else None
+        ),
+        "mean_rejection_rate": (
+            sum(rejection_rates) / len(rejection_rates) if rejection_rates else None
         ),
     }
     return coverage_row, bo_rows

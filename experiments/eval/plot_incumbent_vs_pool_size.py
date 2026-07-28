@@ -38,7 +38,7 @@ def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, k: int) -> None:
     arms = sorted_arms(sub)
     colors = arm_colors(arms)
 
-    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    fig, ax = plt.subplots(figsize=(6.5, 5.0))
     for arm in arms:
         arm_sub = sub[sub["arm"] == arm]
         stats = arm_sub.groupby("milestone")["incumbent_mic"].agg(["mean", "std"]).reindex(milestones)
@@ -57,9 +57,9 @@ def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, k: int) -> None:
     style_axis(ax)
     ax.legend(frameon=False)
     fig.suptitle(f"Proposal-level incumbent vs. #tasks trained (k={k}, {TASK_SET_LABEL[task_set]})", color="#0b0b0b")
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.18, top=0.85, bottom=0.12)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    fig.savefig(out_path, dpi=150)
     plt.close(fig)
     print(f"Wrote {out_path}")
 

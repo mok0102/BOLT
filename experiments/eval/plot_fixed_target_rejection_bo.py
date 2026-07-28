@@ -4,12 +4,16 @@ with the *same* fixed-size feasible pool (target_pool_size), across
 #tasks trained (milestone). Separate figures per task_set
 (trainset / heldout).
 
-Two figure pairs:
+Three figures:
 - fig1_bo_objective_by_milestone_<task_set>.png: headline chart at one
   reference target_pool_size (default: largest present) and one reference k
   (default 5000 -- additional oracle calls after the fixed init pool).
 - fig2_target_sensitivity_<task_set>.png: small multiples, one subplot per
   target_pool_size, to show the trend isn't an artifact of the chosen target.
+- fig3_rejection_rate_by_milestone_<task_set>.png: mean rejection rate
+  (1 - target_pool_size / draws_used, i.e. how many raw draws it took to
+  reach the fixed target) vs. milestone, one line per arm, at the same
+  reference target_pool_size fig1 uses (rejection rate is target-dependent).
 
 coverage_rate is left as CSV-only (no dedicated chart), same convention as
 the rest of this package.
@@ -114,6 +118,45 @@ def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path, k: int) -> None:
     print(f"Wrote {out_path}")
 
 
+def plot_fig3(df: pd.DataFrame, task_set: str, out_path: Path, target: int) -> None:
+    sub = df[(df["task_set"] == task_set) & (df["target_pool_size"] == target)].dropna(subset=["rejection_rate"])
+    sub = sub.drop_duplicates(subset=["arm", "milestone", "task_idx"])
+    if sub.empty:
+        print(f"[plot_fixed_target_rejection_bo] no rejection-rate data for task_set={task_set} "
+              f"target={target}, skipping {out_path}")
+        return
+    milestones = sorted(sub["milestone"].unique())
+    arms = sorted_arms(sub)
+    colors = arm_colors(arms)
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    for arm in arms:
+        arm_sub = sub[sub["arm"] == arm]
+        stats = arm_sub.groupby("milestone")["rejection_rate"].agg(["mean", "std"]).reindex(milestones)
+        ax.plot(milestones, stats["mean"], color=colors[arm], linewidth=2, marker="o", markersize=8, label=arm)
+        ax.fill_between(
+            milestones,
+            stats["mean"] - stats["std"].fillna(0),
+            stats["mean"] + stats["std"].fillna(0),
+            color=colors[arm],
+            alpha=0.15,
+            linewidth=0,
+        )
+    ax.set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
+    ax.set_ylabel("rejection rate (1 - target / raw draws)", color=MUTED_TEXT)
+    ax.set_xticks(milestones)
+    style_axis(ax)
+    ax.legend(frameon=False)
+    fig.suptitle(
+        f"Rejection rate vs. #tasks trained (target pool={target}, {TASK_SET_LABEL[task_set]})", color="#0b0b0b",
+    )
+    fig.subplots_adjust(left=0.18, top=0.85, bottom=0.12)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"Wrote {out_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
@@ -130,6 +173,7 @@ def main() -> None:
     for task_set in ("trainset", "heldout"):
         if target is not None:
             plot_fig1(df, task_set, plots_dir / f"fig1_bo_objective_by_milestone_{task_set}.png", target=target, k=args.k)
+            plot_fig3(df, task_set, plots_dir / f"fig3_rejection_rate_by_milestone_{task_set}.png", target=target)
         plot_fig2(df, task_set, plots_dir / f"fig2_target_sensitivity_{task_set}.png", k=args.k)
 
 
