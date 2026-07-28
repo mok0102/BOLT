@@ -5,15 +5,18 @@ across #tasks trained (milestone). Separate figures per task_set
 (trainset / heldout).
 
 Three figures:
-- fig1_bo_objective_by_milestone_<task_set>.png: headline chart at a fixed k
-  (default 5000 = the full oracle budget, i.e. the "final" BO outcome).
-- fig2_bo_objective_k_sensitivity_<task_set>.png: small multiples, one
-  subplot per k, to show the trend isn't an artifact of the chosen k.
-- fig3_rejection_rate_by_milestone_<task_set>.png: mean rejection rate
+- fixedbudget_mic_bymilestone_bo<bo_calls>_<task_set>.png: headline chart at
+  a fixed bo_calls (default 5000 -- additional oracle calls made by the BO
+  loop after the init pool; 5000 happens to equal the full oracle budget,
+  i.e. the "final" BO outcome).
+- fixedbudget_mic_byboCalls_<task_set>.png: small multiples, one subplot per
+  bo_calls checkpoint, to show the trend isn't an artifact of the chosen
+  checkpoint.
+- fixedbudget_rejection_bymilestone_<task_set>.png: mean rejection rate
   (1 - pool_size / draws_used, i.e. how much of the raw sampling budget a
   reject-and-discard policy had to throw away to build the pool it did get)
   vs. milestone, one line per arm. rejection_rate is per-task/per-milestone,
-  not per-k, so this dedupes per_task rows to one per task before
+  not per-bo_calls, so this dedupes per_task rows to one per task before
   aggregating.
 
 coverage_rate / pool-size spread are left as CSV-only (no dedicated chart).
@@ -41,10 +44,11 @@ def load_per_task(results_dirs: list[Path]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True).dropna(subset=["best_mic"])
 
 
-def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, k: int) -> None:
-    sub = df[(df["k"] == k) & (df["task_set"] == task_set)]
+def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, bo_calls: int) -> None:
+    sub = df[(df["bo_calls"] == bo_calls) & (df["task_set"] == task_set)]
     if sub.empty:
-        print(f"[plot_fixed_budget_rejection_bo] no data for task_set={task_set} k={k}, skipping {out_path}")
+        print(f"[plot_fixed_budget_rejection_bo] no data for task_set={task_set} bo_calls={bo_calls}, "
+              f"skipping {out_path}")
         return
     milestones = sorted(sub["milestone"].unique())
     arms = sorted_arms(sub)
@@ -68,7 +72,10 @@ def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, k: int) -> None:
     ax.set_xticks(milestones)
     style_axis(ax)
     ax.legend(frameon=False)
-    fig.suptitle(f"BO objective vs. #tasks trained (k={k} oracle calls, {TASK_SET_LABEL[task_set]})", color="#0b0b0b")
+    fig.suptitle(
+        f"BO objective vs. #tasks trained ({bo_calls} BO calls after init pool, {TASK_SET_LABEL[task_set]})",
+        color="#0b0b0b",
+    )
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -81,33 +88,35 @@ def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path) -> None:
     if sub.empty:
         print(f"[plot_fixed_budget_rejection_bo] no data for task_set={task_set}, skipping {out_path}")
         return
-    ks = sorted(sub["k"].unique())
+    bo_calls_values = sorted(sub["bo_calls"].unique())
     milestones = sorted(sub["milestone"].unique())
     arms = sorted_arms(sub)
     colors = arm_colors(arms)
     n_cols = 3
-    n_rows = -(-len(ks) // n_cols)  # ceil div
+    n_rows = -(-len(bo_calls_values) // n_cols)  # ceil div
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 3.5 * n_rows), sharey=True)
     axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
 
-    for ax, k in zip(axes, ks):
-        panel_k = sub[sub["k"] == k]
+    for ax, bo_calls in zip(axes, bo_calls_values):
+        panel_bo_calls = sub[sub["bo_calls"] == bo_calls]
         for arm in arms:
-            panel = panel_k[panel_k["arm"] == arm]
+            panel = panel_bo_calls[panel_bo_calls["arm"] == arm]
             means = panel.groupby("milestone")["best_mic"].mean().reindex(milestones)
             ax.plot(milestones, means, color=colors[arm], linewidth=2, marker="o", markersize=5)
-        ax.set_title(f"k={k}", color="#0b0b0b")
+        ax.set_title(f"bo_calls={bo_calls}", color="#0b0b0b")
         ax.set_xticks(milestones)
         style_axis(ax)
         ax.tick_params(labelsize=8)
 
-    for ax in axes[len(ks):]:
+    for ax in axes[len(bo_calls_values):]:
         ax.axis("off")
 
     handles = [plt.Line2D([0], [0], color=colors[arm], linewidth=2.5) for arm in arms]
     fig.legend(handles, arms, loc="lower center", ncol=len(arms), frameon=False, bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle(f"BO objective (best MIC found): k-sensitivity check ({TASK_SET_LABEL[task_set]})", color="#0b0b0b")
+    fig.suptitle(
+        f"BO objective (best MIC found): bo_calls-sensitivity check ({TASK_SET_LABEL[task_set]})", color="#0b0b0b",
+    )
     fig.tight_layout(rect=[0, 0.05, 1, 1])
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -154,7 +163,7 @@ def plot_fig3(df: pd.DataFrame, task_set: str, out_path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
-    parser.add_argument("--k", type=int, default=5000, help="k for the fig1 headline chart")
+    parser.add_argument("--bo-calls", type=int, default=5000, help="bo_calls for the headline chart")
     parser.add_argument("--out-dir", default=None)
     args = parser.parse_args()
 
@@ -163,9 +172,12 @@ def main() -> None:
     plots_dir = resolve_out_dir(results_dirs, args.out_dir) / "plots"
 
     for task_set in ("trainset", "heldout"):
-        plot_fig1(df, task_set, plots_dir / f"fig1_bo_objective_by_milestone_{task_set}.png", k=args.k)
-        plot_fig2(df, task_set, plots_dir / f"fig2_bo_objective_k_sensitivity_{task_set}.png")
-        plot_fig3(df, task_set, plots_dir / f"fig3_rejection_rate_by_milestone_{task_set}.png")
+        plot_fig1(
+            df, task_set, plots_dir / f"fixedbudget_mic_bymilestone_bo{args.bo_calls}_{task_set}.png",
+            bo_calls=args.bo_calls,
+        )
+        plot_fig2(df, task_set, plots_dir / f"fixedbudget_mic_byboCalls_{task_set}.png")
+        plot_fig3(df, task_set, plots_dir / f"fixedbudget_rejection_bymilestone_{task_set}.png")
 
 
 if __name__ == "__main__":

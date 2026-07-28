@@ -5,15 +5,18 @@ with the *same* fixed-size feasible pool (target_pool_size), across
 (trainset / heldout).
 
 Three figures:
-- fig1_bo_objective_by_milestone_<task_set>.png: headline chart at one
-  reference target_pool_size (default: largest present) and one reference k
-  (default 5000 -- additional oracle calls after the fixed init pool).
-- fig2_target_sensitivity_<task_set>.png: small multiples, one subplot per
-  target_pool_size, to show the trend isn't an artifact of the chosen target.
-- fig3_rejection_rate_by_milestone_<task_set>.png: mean rejection rate
-  (1 - target_pool_size / draws_used, i.e. how many raw draws it took to
-  reach the fixed target) vs. milestone, one line per arm, at the same
-  reference target_pool_size fig1 uses (rejection rate is target-dependent).
+- fixedtarget_mic_bymilestone_target<T>_bo<bo_calls>_<task_set>.png: headline
+  chart at one reference target_pool_size (default: largest present) and one
+  reference bo_calls (default 5000 -- additional oracle calls after the
+  fixed init pool).
+- fixedtarget_mic_bytarget_bo<bo_calls>_<task_set>.png: small multiples, one
+  subplot per target_pool_size, to show the trend isn't an artifact of the
+  chosen target.
+- fixedtarget_rejection_bymilestone_target<T>_<task_set>.png: mean rejection
+  rate (1 - target_pool_size / draws_used, i.e. how many raw draws it took
+  to reach the fixed target) vs. milestone, one line per arm, at the same
+  reference target_pool_size the headline chart uses (rejection rate is
+  target-dependent, not bo_calls-dependent).
 
 coverage_rate is left as CSV-only (no dedicated chart), same convention as
 the rest of this package.
@@ -41,10 +44,11 @@ def load_per_task(results_dirs: list[Path]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True).dropna(subset=["best_mic"])
 
 
-def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, target: int, k: int) -> None:
-    sub = df[(df["k"] == k) & (df["task_set"] == task_set) & (df["target_pool_size"] == target)]
+def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, target: int, bo_calls: int) -> None:
+    sub = df[(df["bo_calls"] == bo_calls) & (df["task_set"] == task_set) & (df["target_pool_size"] == target)]
     if sub.empty:
-        print(f"[plot_fixed_target_rejection_bo] no data for task_set={task_set} target={target} k={k}, skipping {out_path}")
+        print(f"[plot_fixed_target_rejection_bo] no data for task_set={task_set} target={target} "
+              f"bo_calls={bo_calls}, skipping {out_path}")
         return
     milestones = sorted(sub["milestone"].unique())
     arms = sorted_arms(sub)
@@ -69,7 +73,7 @@ def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, target: int, k: i
     style_axis(ax)
     ax.legend(frameon=False)
     fig.suptitle(
-        f"BO objective vs. #tasks trained (target pool={target}, k={k}, {TASK_SET_LABEL[task_set]})",
+        f"BO objective vs. #tasks trained (target pool={target}, bo_calls={bo_calls}, {TASK_SET_LABEL[task_set]})",
         color="#0b0b0b",
     )
     fig.tight_layout()
@@ -79,10 +83,11 @@ def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, target: int, k: i
     print(f"Wrote {out_path}")
 
 
-def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path, k: int) -> None:
-    sub = df[(df["task_set"] == task_set) & (df["k"] == k)]
+def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path, bo_calls: int) -> None:
+    sub = df[(df["task_set"] == task_set) & (df["bo_calls"] == bo_calls)]
     if sub.empty:
-        print(f"[plot_fixed_target_rejection_bo] no data for task_set={task_set} k={k}, skipping {out_path}")
+        print(f"[plot_fixed_target_rejection_bo] no data for task_set={task_set} bo_calls={bo_calls}, "
+              f"skipping {out_path}")
         return
     targets = sorted(sub["target_pool_size"].unique())
     milestones = sorted(sub["milestone"].unique())
@@ -110,7 +115,10 @@ def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path, k: int) -> None:
 
     handles = [plt.Line2D([0], [0], color=colors[arm], linewidth=2.5) for arm in arms]
     fig.legend(handles, arms, loc="lower center", ncol=len(arms), frameon=False, bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle(f"BO objective: target-pool-size sensitivity check ({TASK_SET_LABEL[task_set]}, k={k})", color="#0b0b0b")
+    fig.suptitle(
+        f"BO objective: target-pool-size sensitivity check ({TASK_SET_LABEL[task_set]}, bo_calls={bo_calls})",
+        color="#0b0b0b",
+    )
     fig.tight_layout(rect=[0, 0.05, 1, 1])
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -160,8 +168,10 @@ def plot_fig3(df: pd.DataFrame, task_set: str, out_path: Path, target: int) -> N
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
-    parser.add_argument("--target", type=int, default=None, help="target_pool_size for fig1 (default: largest present)")
-    parser.add_argument("--k", type=int, default=5000, help="k for both figures")
+    parser.add_argument(
+        "--target", type=int, default=None, help="target_pool_size for the headline chart (default: largest present)"
+    )
+    parser.add_argument("--bo-calls", type=int, default=5000, help="bo_calls for both figures")
     parser.add_argument("--out-dir", default=None)
     args = parser.parse_args()
 
@@ -172,9 +182,19 @@ def main() -> None:
 
     for task_set in ("trainset", "heldout"):
         if target is not None:
-            plot_fig1(df, task_set, plots_dir / f"fig1_bo_objective_by_milestone_{task_set}.png", target=target, k=args.k)
-            plot_fig3(df, task_set, plots_dir / f"fig3_rejection_rate_by_milestone_{task_set}.png", target=target)
-        plot_fig2(df, task_set, plots_dir / f"fig2_target_sensitivity_{task_set}.png", k=args.k)
+            plot_fig1(
+                df, task_set,
+                plots_dir / f"fixedtarget_mic_bymilestone_target{target}_bo{args.bo_calls}_{task_set}.png",
+                target=target, bo_calls=args.bo_calls,
+            )
+            plot_fig3(
+                df, task_set, plots_dir / f"fixedtarget_rejection_bymilestone_target{target}_{task_set}.png",
+                target=target,
+            )
+        plot_fig2(
+            df, task_set, plots_dir / f"fixedtarget_mic_bytarget_bo{args.bo_calls}_{task_set}.png",
+            bo_calls=args.bo_calls,
+        )
 
 
 if __name__ == "__main__":

@@ -54,9 +54,9 @@ COVERAGE_FIELDS = [
 ]
 PER_TASK_FIELDS = [
     "arm", "milestone", "task_set", "task_idx", "target_pool_size",
-    "draws_used", "rejection_rate", "best_feasible_incumbent", "k", "best_mic",
+    "draws_used", "rejection_rate", "best_feasible_incumbent", "bo_calls", "best_mic",
 ]
-SUMMARY_FIELDS = ["arm", "milestone", "task_set", "target_pool_size", "k", "n_tasks_ran_bo", "mean_best_mic"]
+SUMMARY_FIELDS = ["arm", "milestone", "task_set", "target_pool_size", "bo_calls", "n_tasks_ran_bo", "mean_best_mic"]
 
 
 def run_for_spec_task_set_target(
@@ -88,12 +88,12 @@ def run_for_spec_task_set_target(
         best_feasible_incumbent = read_best_feasible_incumbent(work_dir, task_idx)
         if best_feasible_incumbent is not None:
             feasible_incumbents.append(best_feasible_incumbent)
-        for k in bo_k_checkpoints(cfg):
+        for bo_calls in bo_k_checkpoints(cfg):
             bo_rows.append({
                 "arm": spec.arm, "milestone": spec.milestone, "task_set": task_set, "task_idx": task_idx,
                 "target_pool_size": target, "draws_used": draws_used, "rejection_rate": rejection_rate,
                 "best_feasible_incumbent": best_feasible_incumbent,
-                "k": k, "best_mic": _best_mic_at_k(csv_path, pool_size, k),
+                "bo_calls": bo_calls, "best_mic": _best_mic_at_k(csv_path, pool_size, bo_calls),
             })
 
     coverage_row = {
@@ -136,13 +136,13 @@ def summarize_bo_rows(bo_rows: list[dict]) -> list[dict]:
     for row in bo_rows:
         if row["best_mic"] is None:
             continue
-        key = (row["arm"], row["milestone"], row["task_set"], row["target_pool_size"], row["k"])
+        key = (row["arm"], row["milestone"], row["task_set"], row["target_pool_size"], row["bo_calls"])
         groups.setdefault(key, []).append(row["best_mic"])
     summary = []
-    for (arm, milestone, task_set, target, k), values in sorted(groups.items()):
+    for (arm, milestone, task_set, target, bo_calls), values in sorted(groups.items()):
         summary.append({
             "arm": arm, "milestone": milestone, "task_set": task_set, "target_pool_size": target,
-            "k": k, "n_tasks_ran_bo": len(values), "mean_best_mic": sum(values) / len(values),
+            "bo_calls": bo_calls, "n_tasks_ran_bo": len(values), "mean_best_mic": sum(values) / len(values),
         })
     return summary
 
