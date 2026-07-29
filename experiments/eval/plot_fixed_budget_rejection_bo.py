@@ -112,11 +112,17 @@ def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path) -> None:
     for ax in axes[len(bo_calls_values):]:
         ax.axis("off")
 
+    for col in range(n_cols):
+        rows_in_col = [r for r in range(n_rows) if r * n_cols + col < len(bo_calls_values)]
+        if rows_in_col:
+            axes[max(rows_in_col) * n_cols + col].set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
+
     handles = [plt.Line2D([0], [0], color=colors[arm], linewidth=2.5) for arm in arms]
     fig.legend(handles, arms, loc="lower center", ncol=len(arms), frameon=False, bbox_to_anchor=(0.5, -0.02))
     fig.suptitle(
         f"BO objective (best MIC found): bo_calls-sensitivity check ({TASK_SET_LABEL[task_set]})", color="#0b0b0b",
     )
+    fig.supylabel("best MIC found (lower = more potent)", color=MUTED_TEXT)
     fig.tight_layout(rect=[0, 0.05, 1, 1])
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -153,9 +159,9 @@ def plot_fig3(df: pd.DataFrame, task_set: str, out_path: Path) -> None:
     style_axis(ax)
     ax.legend(frameon=False)
     fig.suptitle(f"Rejection rate vs. #tasks trained (fixed budget, {TASK_SET_LABEL[task_set]})", color="#0b0b0b")
-    fig.subplots_adjust(left=0.18, top=0.85, bottom=0.12)
+    fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Wrote {out_path}")
 
