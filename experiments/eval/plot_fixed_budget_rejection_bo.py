@@ -19,7 +19,10 @@ Three figures:
   not per-bo_calls, so this dedupes per_task rows to one per task before
   aggregating.
 
-coverage_rate / pool-size spread are left as CSV-only (no dedicated chart).
+A fourth figure, fixedbudget_coverage_bymilestone_<task_set>.png, plots
+coverage_rate (fraction of tasks clearing the min_feasible floor) vs.
+milestone -- reads fixed_budget_bo_coverage.csv directly since that rate is
+already task-aggregated there. Pool-size spread is left as CSV-only.
 
 Usage (run from the BOLT repo root):
     python experiments/eval/plot_fixed_budget_rejection_bo.py \\
@@ -166,6 +169,41 @@ def plot_fig3(df: pd.DataFrame, task_set: str, out_path: Path) -> None:
     print(f"Wrote {out_path}")
 
 
+def load_coverage(results_dirs: list[Path]) -> pd.DataFrame:
+    frames = [pd.read_csv(d / "fixed_budget_bo_coverage.csv") for d in results_dirs]
+    return pd.concat(frames, ignore_index=True)
+
+
+def plot_fig4_coverage(df: pd.DataFrame, task_set: str, out_path: Path) -> None:
+    sub = df[df["task_set"] == task_set].dropna(subset=["coverage_rate"])
+    if sub.empty:
+        print(f"[plot_fixed_budget_rejection_bo] no coverage data for task_set={task_set}, skipping {out_path}")
+        return
+    milestones = sorted(sub["milestone"].unique())
+    arms = sorted_arms(sub)
+    colors = arm_colors(arms)
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    for arm in arms:
+        arm_sub = sub[sub["arm"] == arm].set_index("milestone").reindex(milestones)
+        ax.plot(
+            milestones, arm_sub["coverage_rate"],
+            color=colors[arm], linewidth=2, marker="o", markersize=8, label=arm,
+        )
+    ax.set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
+    ax.set_ylabel("coverage rate (fraction of tasks clearing min_feasible)", color=MUTED_TEXT)
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_xticks(milestones)
+    style_axis(ax)
+    ax.legend(frameon=False)
+    fig.suptitle(f"Coverage rate vs. #tasks trained (fixed budget, {TASK_SET_LABEL[task_set]})", color="#0b0b0b")
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Wrote {out_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
@@ -175,6 +213,7 @@ def main() -> None:
 
     results_dirs = [Path(d.strip()) for d in args.results_dir.split(",") if d.strip()]
     df = load_per_task(results_dirs)
+    coverage_df = load_coverage(results_dirs)
     plots_dir = resolve_out_dir(results_dirs, args.out_dir) / "plots"
 
     for task_set in ("trainset", "heldout"):
@@ -184,6 +223,7 @@ def main() -> None:
         )
         plot_fig2(df, task_set, plots_dir / f"fixedbudget_mic_byboCalls_{task_set}.png")
         plot_fig3(df, task_set, plots_dir / f"fixedbudget_rejection_bymilestone_{task_set}.png")
+        plot_fig4_coverage(coverage_df, task_set, plots_dir / f"fixedbudget_coverage_bymilestone_{task_set}.png")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ All commands below assume they're run from the **BOLT repo root**.
 
 Prerequisite: one manifest YAML listing the (arm, milestone, run_dir, checkpoint_dir) combinations
 you want to evaluate. Example: [`manifests/poc20_four_arm.yaml`](manifests/poc20_four_arm.yaml)
-(BOLT/ORPT/ORPT-FA/ORPT-LEX × milestone 5/10/20).
+(BOLT/ORPT/ORPT-FA/ORPT-LEX × milestone 5/10/20/30/40/50/60/70/80/90/100).
 
 Copy-paste the block below to run raw proposal generation → experiment 1-3 compute → plot, start
 to finish. (Only `CONFIG`/`MANIFEST` need to change. `CONFIG` doesn't select a model — it's only
@@ -93,8 +93,8 @@ python experiments/eval/generate_raw_proposals.py \
 
 Note that `--config` and `--manifest` play different roles:
 - **Only `--manifest` decides which models get evaluated (whose raw proposals get generated).**
-  The command above generates raw proposals for all 12 entries listed in `poc20_four_arm.yaml`
-  (BOLT/ORPT/ORPT-FA/ORPT-LEX × milestone 5/10/20) — not just BOLT.
+  The command above generates raw proposals for all 44 entries listed in `poc20_four_arm.yaml`
+  (BOLT/ORPT/ORPT-FA/ORPT-LEX × milestone 5/10/20/30/40/50/60/70/80/90/100) — not just BOLT.
 - **`--config` does not select a model.** It's only read for constants shared by every entry in
   the manifest (`similarity_threshold`, task universe, etc.), so passing
   `peptide_poc20_bolt.yaml` as in the example still processes the ORPT/ORPT-FA/ORPT-LEX
@@ -134,11 +134,14 @@ python experiments/eval/incumbent_vs_pool_size.py \
 
 **Plot**
 - Input: `--results-dir results/<manifest stem>`
-- What it does: draws two kinds of figures per task_set (trainset/heldout)
+- What it does: draws three kinds of figures per task_set (trainset/heldout)
   - `incumbent_mic_bymilestone_n<n_proposals>_<task_set>.png`: headline chart — arm-by-arm trend
     across milestones at a fixed `n_proposals` (default 10)
   - `incumbent_mic_byNProposals_<task_set>.png`: small multiples, one subplot per `n_proposals`
     checkpoint
+  - `incumbent_coverage_bymilestone_n<n_proposals>_<task_set>.png`: `coverage_rate_at_n_proposals`
+    (share of tasks with enough feasible proposals to even measure an incumbent) vs. milestone, at
+    the same reference `n_proposals` as the headline chart
 - Output: `results/<manifest stem>/plots/*.png`
 
 ```bash
@@ -186,13 +189,15 @@ python experiments/eval/fixed_target_rejection_bo.py \
 
 **Plot**
 - Input: `--results-dir results/<manifest stem>`
-- What it does: three figures
+- What it does: four figures
   - `fixedtarget_mic_bymilestone_target<T>_bo<bo_calls>_<task_set>.png`: headline chart at a
     reference target_pool_size (default: the largest present) and bo_calls (default 5000)
   - `fixedtarget_mic_bytarget_bo<bo_calls>_<task_set>.png`: small multiples, one subplot per
     target_pool_size
   - `fixedtarget_rejection_bymilestone_target<T>_<task_set>.png`: rejection rate (share of raw
     draws thrown away) vs. milestone, at the reference target
+  - `fixedtarget_coverage_bymilestone_target<T>_<task_set>.png`: `coverage_rate` (share of tasks
+    that could reach `target_pool_size` at all) vs. milestone, at the same reference target
 - Output: `results/<manifest stem>/plots/*.png`
 
 ```bash
@@ -240,12 +245,14 @@ python experiments/eval/fixed_budget_rejection_bo.py \
 
 **Plot**
 - Input: `--results-dir results/<manifest stem>`
-- What it does: three figures
+- What it does: four figures
   - `fixedbudget_mic_bymilestone_bo<bo_calls>_<task_set>.png`: headline chart at a reference
     bo_calls (default 5000 — i.e. the full oracle budget spent)
   - `fixedbudget_mic_byboCalls_<task_set>.png`: small multiples, one subplot per bo_calls
     checkpoint
   - `fixedbudget_rejection_bymilestone_<task_set>.png`: rejection rate vs. milestone
+  - `fixedbudget_coverage_bymilestone_<task_set>.png`: `coverage_rate` (share of tasks clearing
+    the `min_feasible` floor) vs. milestone
 - Output: `results/<manifest stem>/plots/*.png`
 
 ```bash

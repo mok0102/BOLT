@@ -5,12 +5,13 @@ Arms are derived from cfg.milestones (+ STBO) rather than hardcoded, so this
 also works unmodified against the smoke config's tiny milestones.
 
 Table 11 and Figure 1/2 report two genuinely different quantities (confirmed
-via Appendix D.6, p.24): Table 11 is an "initialization only" metric -- k
-indexes into the init pool itself (k_max == init_size), zero BO acquisition
--- while Figure 1/2 is a full-BO scaling curve (k = oracle calls made during
-acquisition, after an identically-sized init set). build_table11() reads
-run_init_only_eval()'s scores files directly; build_figure1_2() reads
-run_heldout_eval()'s full BO trajectory CSVs.
+via Appendix D.6, p.24): the no-BO milestone eval (paper's Table 11) is an
+"initialization only" metric -- k indexes into the init pool itself
+(k_max == init_size), zero BO acquisition -- while the BO scaling curve
+(paper's Figure 1/2) is a full-BO scaling curve (k = oracle calls made during
+acquisition, after an identically-sized init set). build_no_bo_milestone_eval()
+reads run_init_only_eval()'s scores files directly; build_bo_scaling_curve()
+reads run_heldout_eval()'s full BO trajectory CSVs.
 
 Figure 1/2 assumption (not verified against paper source/plots, only the
 caption text): train_x/train_y in the collected-data CSV are appended in
@@ -88,10 +89,10 @@ def _sum_mic_across_tasks(
     return total, n_missing
 
 
-def build_table11(cfg: ExperimentConfig) -> pd.DataFrame:
-    """Table 11: rows = k (index into the init pool itself, zero BO
-    acquisition -- see module docstring), columns = arms, cells = summed
-    unnormalized MIC across the 20-task held-out set."""
+def build_no_bo_milestone_eval(cfg: ExperimentConfig) -> pd.DataFrame:
+    """No-BO milestone eval (paper's Table 11): rows = k (index into the init
+    pool itself, zero BO acquisition -- see module docstring), columns = arms,
+    cells = summed unnormalized MIC across the 20-task held-out set."""
     arms = _arms(cfg)
     n_tasks = len(cfg.heldout_tasks("heldout20"))
     rows = {}
@@ -100,21 +101,21 @@ def build_table11(cfg: ExperimentConfig) -> pd.DataFrame:
         for arm in arms:
             total, n_missing = _sum_score_across_tasks_init_only(cfg, "heldout20", arm, k)
             if n_missing:
-                print(f"[table11] arm={arm} k={k}: missing {n_missing}/{n_tasks} task score files")
+                print(f"[no_bo_milestone_eval] arm={arm} k={k}: missing {n_missing}/{n_tasks} task score files")
             row[arm] = total
         rows[k] = row
     df = pd.DataFrame.from_dict(rows, orient="index")
     df.index.name = "k"
 
     cfg.aggregate_dir.mkdir(parents=True, exist_ok=True)
-    out_path = cfg.aggregate_dir / "table11.csv"
+    out_path = cfg.aggregate_dir / "no_bo_milestone_eval.csv"
     df.to_csv(out_path)
     print(f"Wrote {out_path}")
     return df
 
 
-def build_figure1_2(cfg: ExperimentConfig) -> pd.DataFrame:
-    """Figure 1/2-style scaling curve: rows = oracle-call checkpoints,
+def build_bo_scaling_curve(cfg: ExperimentConfig) -> pd.DataFrame:
+    """BO scaling curve (paper's Figure 1/2): rows = oracle-call checkpoints,
     columns = arms, cells = summed objective across the 100-task held-out
     set."""
     arms = _arms(cfg)
@@ -126,14 +127,14 @@ def build_figure1_2(cfg: ExperimentConfig) -> pd.DataFrame:
         for arm in arms:
             total, n_missing = _sum_mic_across_tasks(cfg, "heldout100", arm, k)
             if n_missing:
-                print(f"[figure1_2] arm={arm} k={k}: missing {n_missing}/{n_tasks} task CSVs")
+                print(f"[bo_scaling_curve] arm={arm} k={k}: missing {n_missing}/{n_tasks} task CSVs")
             row[arm] = total
         rows[k] = row
     df = pd.DataFrame.from_dict(rows, orient="index")
     df.index.name = "oracle_calls"
 
     cfg.aggregate_dir.mkdir(parents=True, exist_ok=True)
-    out_path = cfg.aggregate_dir / "figure1_2.csv"
+    out_path = cfg.aggregate_dir / "bo_scaling_curve.csv"
     df.to_csv(out_path)
     print(f"Wrote {out_path}")
     return df

@@ -16,7 +16,8 @@
 # gamma_plus deviates from the experiment-spec default (0.3, not 0.0) for
 # this PoC; the rest match peptide_100task_orpt_fa.yaml's first-run defaults.
 experiment_id: peptide_poc20_orpt_fa
-milestones: [5, 10, 20]
+milestones: [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+cuda_visible_devices: "3"
 oracle_budget: 5000
 init_size: 500
 bsz: 50

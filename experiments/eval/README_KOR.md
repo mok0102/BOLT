@@ -9,7 +9,7 @@
 
 준비물: 평가하고 싶은 (arm, milestone, run_dir, checkpoint_dir) 조합을 담은 manifest YAML 하나.
 예시: [`manifests/poc20_four_arm.yaml`](manifests/poc20_four_arm.yaml) (BOLT/ORPT/ORPT-FA/ORPT-LEX ×
-milestone 5/10/20).
+milestone 5/10/20/30/40/50/60/70/80/90/100).
 
 아래를 그대로 복붙하면 raw proposal 생성 → 실험 1~3 compute → plot까지 한 번에 끝난다.
 (`CONFIG`/`MANIFEST` 두 변수만 자기 것으로 바꾸면 됨. `CONFIG`는 모델을 지정하는 게 아니라, manifest의
@@ -92,7 +92,8 @@ python experiments/eval/generate_raw_proposals.py \
 
 `--config`와 `--manifest`의 역할이 다르다는 점에 주의:
 - **평가 대상 모델(누구를 위한 raw proposal인지)을 정하는 건 `--manifest`뿐이다.** 위 명령은
-  `poc20_four_arm.yaml`에 나열된 12개 항목(BOLT/ORPT/ORPT-FA/ORPT-LEX × milestone 5/10/20) 전부에
+  `poc20_four_arm.yaml`에 나열된 44개 항목(BOLT/ORPT/ORPT-FA/ORPT-LEX × milestone
+  5/10/20/30/40/50/60/70/80/90/100) 전부에
   대해 raw proposal을 생성한다 — BOLT만 생성하는 게 아니다.
 - **`--config`는 모델을 지정하지 않는다.** manifest의 모든 항목이 공유하는 상수
   (`similarity_threshold`, task universe 등)를 읽기 위한 용도일 뿐이라, 예시처럼
@@ -132,10 +133,13 @@ python experiments/eval/incumbent_vs_pool_size.py \
 
 **Plot**
 - Input: `--results-dir results/<manifest stem>`
-- 하는 일: task_set(trainset/heldout)별로 두 종류의 그림을 그림
+- 하는 일: task_set(trainset/heldout)별로 세 종류의 그림을 그림
   - `incumbent_mic_bymilestone_n<n_proposals>_<task_set>.png`: 고정된 `n_proposals`(기본 10)에서
     arm별 milestone 추이 (헤드라인 차트)
   - `incumbent_mic_byNProposals_<task_set>.png`: `n_proposals` 체크포인트별 small multiples
+  - `incumbent_coverage_bymilestone_n<n_proposals>_<task_set>.png`: 헤드라인 차트와 같은 기준
+    `n_proposals`에서, incumbent를 측정할 만큼 feasible proposal이 충분했던 task의 비율
+    (`coverage_rate_at_n_proposals`) vs. milestone
 - Output: `results/<manifest stem>/plots/*.png`
 
 ```bash
@@ -181,12 +185,14 @@ python experiments/eval/fixed_target_rejection_bo.py \
 
 **Plot**
 - Input: `--results-dir results/<manifest stem>`
-- 하는 일: 세 종류의 그림
+- 하는 일: 네 종류의 그림
   - `fixedtarget_mic_bymilestone_target<T>_bo<bo_calls>_<task_set>.png`: 기준
     target_pool_size(기본: 존재하는 것 중 최대)와 bo_calls(기본 5000)에서 헤드라인 차트
   - `fixedtarget_mic_bytarget_bo<bo_calls>_<task_set>.png`: target_pool_size별 small multiples
   - `fixedtarget_rejection_bymilestone_target<T>_<task_set>.png`: 기준 target에서 rejection rate
     (raw draw 대비 몇 %를 버렸는지) vs. milestone
+  - `fixedtarget_coverage_bymilestone_target<T>_<task_set>.png`: 기준 target에서 target_pool_size
+    자체를 채운 task의 비율(`coverage_rate`) vs. milestone
 - Output: `results/<manifest stem>/plots/*.png`
 
 ```bash
@@ -232,11 +238,13 @@ python experiments/eval/fixed_budget_rejection_bo.py \
 
 **Plot**
 - Input: `--results-dir results/<manifest stem>`
-- 하는 일: 세 종류의 그림
+- 하는 일: 네 종류의 그림
   - `fixedbudget_mic_bymilestone_bo<bo_calls>_<task_set>.png`: 기준 bo_calls(기본 5000, 즉 전체
     oracle budget 소진 시점)에서 헤드라인 차트
   - `fixedbudget_mic_byboCalls_<task_set>.png`: bo_calls 체크포인트별 small multiples
   - `fixedbudget_rejection_bymilestone_<task_set>.png`: rejection rate vs. milestone
+  - `fixedbudget_coverage_bymilestone_<task_set>.png`: `min_feasible` 바닥을 넘긴 task의 비율
+    (`coverage_rate`) vs. milestone
 - Output: `results/<manifest stem>/plots/*.png`
 
 ```bash

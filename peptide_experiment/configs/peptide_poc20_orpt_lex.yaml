@@ -5,7 +5,8 @@
 # infeasible candidates are kept and ranked behind any feasible one (see
 # make_dpo_train_data_csv.py's sample_pairs()/_pick_chosen_rejected()).
 experiment_id: peptide_poc20_orpt_lex
-milestones: [5, 10, 20]
+milestones: [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+cuda_visible_devices: "4"
 oracle_budget: 5000
 init_size: 500
 bsz: 50

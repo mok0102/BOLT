@@ -41,9 +41,10 @@ class ExperimentConfig:
     # task indices, so a smoke run doesn't try to sweep the real 20/100-task
     # paper held-out sets. None -> use the real paper splits.
     heldout_tasks_override: list[int] | None = None
-    # Oracle-call checkpoints for Table 11 / Figure 1-2 style aggregation.
-    # Paper default is [1, 100, 200, 500, 1000] (Table 11); override to
-    # something smaller than oracle_budget for a smoke run.
+    # Oracle-call checkpoints for the no_bo_milestone_eval / bo_scaling_curve
+    # aggregations (paper's Table 11 / Figure 1-2). Paper default is
+    # [1, 100, 200, 500, 1000] (Table 11); override to something smaller than
+    # oracle_budget for a smoke run.
     table_k_checkpoints: list[int] = field(default_factory=lambda: [1, 100, 200, 500, 1000])
 
     # ORPT (Stage 4): when True, an ORPT-<m> DPO stage is trained on top of

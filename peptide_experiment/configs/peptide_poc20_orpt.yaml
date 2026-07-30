@@ -17,7 +17,8 @@
 # NOTE the orpt_lr scientific-notation gotcha (README.md): 2.0e-5, not 2e-5,
 # or PyYAML parses it as a string, not a float.
 experiment_id: peptide_poc20_orpt
-milestones: [5, 10, 20]
+milestones: [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+cuda_visible_devices: "2"
 oracle_budget: 5000
 init_size: 500
 bsz: 50

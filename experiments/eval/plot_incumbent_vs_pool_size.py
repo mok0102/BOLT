@@ -10,8 +10,13 @@ Two figure pairs, mirroring the rest of experiments/eval/'s plot scripts:
 - incumbent_mic_byNProposals_<task_set>.png: small multiples, one subplot
   per n_proposals checkpoint.
 
-rejection_rate_at_n_proposals is left as CSV-only (no dedicated chart), same
-convention as coverage_rate elsewhere in this package.
+rejection_rate_at_n_proposals is left as CSV-only (no dedicated chart).
+
+A third figure, incumbent_coverage_bymilestone_n<n_proposals>_<task_set>.png,
+plots coverage_rate_at_n_proposals (fraction of tasks with enough feasible
+proposals to even measure an incumbent at n_proposals) vs. milestone -- reads
+summary_incumbent_vs_pool_size.csv directly since that rate is already
+task-aggregated there.
 
 Usage (run from the BOLT repo root):
     python experiments/eval/plot_incumbent_vs_pool_size.py \\
@@ -117,6 +122,42 @@ def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path) -> None:
     print(f"Wrote {out_path}")
 
 
+def plot_fig3_coverage(df: pd.DataFrame, task_set: str, out_path: Path, n_proposals: int) -> None:
+    sub = df[(df["n_proposals"] == n_proposals) & (df["task_set"] == task_set)].dropna(
+        subset=["coverage_rate_at_n_proposals"]
+    )
+    if sub.empty:
+        print(f"[plot_incumbent_vs_pool_size] no coverage data for task_set={task_set} n_proposals={n_proposals}, "
+              f"skipping {out_path}")
+        return
+    milestones = sorted(sub["milestone"].unique())
+    arms = sorted_arms(sub)
+    colors = arm_colors(arms)
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    for arm in arms:
+        arm_sub = sub[sub["arm"] == arm].set_index("milestone").reindex(milestones)
+        ax.plot(
+            milestones, arm_sub["coverage_rate_at_n_proposals"],
+            color=colors[arm], linewidth=2, marker="o", markersize=8, label=arm,
+        )
+    ax.set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
+    ax.set_ylabel("coverage rate (fraction of tasks with enough feasible proposals)", color=MUTED_TEXT)
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_xticks(milestones)
+    style_axis(ax)
+    ax.legend(frameon=False)
+    fig.suptitle(
+        f"Coverage rate vs. #tasks trained (n_proposals={n_proposals}, {TASK_SET_LABEL[task_set]})",
+        color="#0b0b0b",
+    )
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Wrote {out_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
@@ -126,6 +167,7 @@ def main() -> None:
 
     results_dirs = [Path(d.strip()) for d in args.results_dir.split(",") if d.strip()]
     df = load_concat_csv(results_dirs, "per_task_incumbent_vs_pool_size.csv")
+    summary_df = load_concat_csv(results_dirs, "summary_incumbent_vs_pool_size.csv")
     plots_dir = resolve_out_dir(results_dirs, args.out_dir) / "plots"
 
     for task_set in ("trainset", "heldout"):
@@ -134,6 +176,11 @@ def main() -> None:
             n_proposals=args.n_proposals,
         )
         plot_fig2(df, task_set, plots_dir / f"incumbent_mic_byNProposals_{task_set}.png")
+        plot_fig3_coverage(
+            summary_df, task_set,
+            plots_dir / f"incumbent_coverage_bymilestone_n{args.n_proposals}_{task_set}.png",
+            n_proposals=args.n_proposals,
+        )
 
 
 if __name__ == "__main__":

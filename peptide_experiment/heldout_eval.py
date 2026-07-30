@@ -72,10 +72,11 @@ def run_heldout_eval(cfg: ExperimentConfig, arm: str, task_set: str) -> None:
 
 
 def run_init_only_eval(cfg: ExperimentConfig, arm: str, task_set: str) -> None:
-    """Table 11/12-style eval: build each held-out task's init pool only
-    (mutation-based for STBO, LLM-sampled from the milestone checkpoint for
-    BOLT-<m>) -- no run_bo() call at all. aggregate.py's build_table11()
-    reads the resulting task_XXXX_scores.csv files directly.
+    """No-BO milestone eval (paper's Table 11/12): build each held-out task's
+    init pool only (mutation-based for STBO, LLM-sampled from the milestone
+    checkpoint for BOLT-<m>) -- no run_bo() call at all. aggregate.py's
+    build_no_bo_milestone_eval() reads the resulting task_XXXX_scores.csv
+    files directly.
     """
     out_dir = cfg.heldout_dir(task_set) / "init_only" / arm
     tasks = cfg.heldout_tasks(task_set)

@@ -18,8 +18,11 @@ Three figures:
   reference target_pool_size the headline chart uses (rejection rate is
   target-dependent, not bo_calls-dependent).
 
-coverage_rate is left as CSV-only (no dedicated chart), same convention as
-the rest of this package.
+A fourth figure, fixedtarget_coverage_bymilestone_target<T>_<task_set>.png,
+plots coverage_rate (fraction of tasks that could reach target_pool_size at
+all) vs. milestone at the same reference target the headline chart uses --
+reads fixed_target_bo_coverage.csv directly since that rate is already
+task-aggregated there.
 
 Usage (run from the BOLT repo root):
     python experiments/eval/plot_fixed_target_rejection_bo.py \\
@@ -171,6 +174,44 @@ def plot_fig3(df: pd.DataFrame, task_set: str, out_path: Path, target: int) -> N
     print(f"Wrote {out_path}")
 
 
+def load_coverage(results_dirs: list[Path]) -> pd.DataFrame:
+    frames = [pd.read_csv(d / "fixed_target_bo_coverage.csv") for d in results_dirs]
+    return pd.concat(frames, ignore_index=True)
+
+
+def plot_fig4_coverage(df: pd.DataFrame, task_set: str, out_path: Path, target: int) -> None:
+    sub = df[(df["task_set"] == task_set) & (df["target_pool_size"] == target)].dropna(subset=["coverage_rate"])
+    if sub.empty:
+        print(f"[plot_fixed_target_rejection_bo] no coverage data for task_set={task_set} target={target}, "
+              f"skipping {out_path}")
+        return
+    milestones = sorted(sub["milestone"].unique())
+    arms = sorted_arms(sub)
+    colors = arm_colors(arms)
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    for arm in arms:
+        arm_sub = sub[sub["arm"] == arm].set_index("milestone").reindex(milestones)
+        ax.plot(
+            milestones, arm_sub["coverage_rate"],
+            color=colors[arm], linewidth=2, marker="o", markersize=8, label=arm,
+        )
+    ax.set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
+    ax.set_ylabel("coverage rate (fraction of tasks reaching target pool size)", color=MUTED_TEXT)
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_xticks(milestones)
+    style_axis(ax)
+    ax.legend(frameon=False)
+    fig.suptitle(
+        f"Coverage rate vs. #tasks trained (target pool={target}, {TASK_SET_LABEL[task_set]})", color="#0b0b0b",
+    )
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Wrote {out_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
@@ -183,6 +224,7 @@ def main() -> None:
 
     results_dirs = [Path(d.strip()) for d in args.results_dir.split(",") if d.strip()]
     df = load_per_task(results_dirs)
+    coverage_df = load_coverage(results_dirs)
     plots_dir = resolve_out_dir(results_dirs, args.out_dir) / "plots"
     target = args.target if args.target is not None else (int(df["target_pool_size"].max()) if not df.empty else None)
 
@@ -195,6 +237,11 @@ def main() -> None:
             )
             plot_fig3(
                 df, task_set, plots_dir / f"fixedtarget_rejection_bymilestone_target{target}_{task_set}.png",
+                target=target,
+            )
+            plot_fig4_coverage(
+                coverage_df, task_set,
+                plots_dir / f"fixedtarget_coverage_bymilestone_target{target}_{task_set}.png",
                 target=target,
             )
         plot_fig2(

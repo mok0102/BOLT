@@ -22,7 +22,7 @@ from __future__ import annotations
 import fire
 
 from .aggregate import _arms as _all_arms
-from .aggregate import build_figure1_2, build_table11
+from .aggregate import build_bo_scaling_curve, build_no_bo_milestone_eval
 from .config import load_config
 from .heldout_eval import run_heldout_eval, run_init_only_eval
 from .trajectory_chain import run_trajectory_chain
@@ -51,9 +51,9 @@ class CLI:
         assert tasks in ("heldout20", "heldout100", "both"), tasks
         cfg = load_config(config)
         if tasks in ("heldout20", "both"):
-            build_table11(cfg)
+            build_no_bo_milestone_eval(cfg)
         if tasks in ("heldout100", "both"):
-            build_figure1_2(cfg)
+            build_bo_scaling_curve(cfg)
 
 
 if __name__ == "__main__":

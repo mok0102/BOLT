@@ -14,8 +14,9 @@ this file is only the "how do I run it" reference.
   `10/20/50/600`.
 - **Arm**: `BOLT-<milestone>`, `ORPT-<milestone>` (only if the config sets
   `build_orpt: true`), or `STBO` (a random-mutation baseline, no LLM at all).
-- **Task set**: `heldout20` (Table 11, peptide indices 900-919), `heldout100`
-  (Figure 1/2, indices 900-999), or the training tasks themselves (0..899).
+- **Task set**: `heldout20` (no_bo_milestone_eval / paper's Table 11, peptide indices
+  900-919), `heldout100` (bo_scaling_curve / paper's Figure 1/2, indices 900-999), or the
+  training tasks themselves (0..899).
 - Everything for one run lives under `runs/<experiment_id>/` (gitignored — generated
   output, not source).
 
@@ -26,22 +27,22 @@ this file is only the "how do I run it" reference.
 python -m peptide_experiment.cli trajectory_chain \
     --config peptide_experiment/configs/peptide_smoke.yaml
 
-# 2. Table-11-style eval (init pool only, no BO) on every arm
+# 2. no_bo_milestone_eval (init pool only, no BO) on every arm
 python -m peptide_experiment.cli init_only_eval \
     --config peptide_experiment/configs/peptide_smoke.yaml \
     --arm all --tasks heldout20
 
-# 3. Figure-1/2-style eval (full BO run per task) on every arm
+# 3. bo_scaling_curve eval (full BO run per task) on every arm
 python -m peptide_experiment.cli heldout_eval \
     --config peptide_experiment/configs/peptide_smoke.yaml \
     --arm all --tasks heldout100
 
-# 4. Aggregate both into table11.csv / figure1_2.csv
+# 4. Aggregate both into no_bo_milestone_eval.csv / bo_scaling_curve.csv
 python -m peptide_experiment.cli aggregate \
     --config peptide_experiment/configs/peptide_smoke.yaml --tasks both
 ```
 
-Outputs: `runs/peptide_smoke_v1/aggregate/{table11,figure1_2}.csv`. This config uses a
+Outputs: `runs/peptide_smoke_v1/aggregate/{no_bo_milestone_eval,bo_scaling_curve}.csv`. This config uses a
 tiny milestone schedule (`[1,2,3]`) and budget, so it finishes in minutes — use it to
 confirm the pipeline works end to end before touching a real config.
 
@@ -61,14 +62,14 @@ GPU. Run only what you mean to:
 python -m peptide_experiment.cli trajectory_chain \
     --config peptide_experiment/configs/peptide_100task_orpt_beta0.25.yaml
 
-# Table 11 (cheap: init-pool-only, no BO)
+# no_bo_milestone_eval / Table 11 (cheap: init-pool-only, no BO)
 python -m peptide_experiment.cli init_only_eval \
     --config peptide_experiment/configs/peptide_100task_orpt_beta0.25.yaml \
     --arm all --tasks heldout20
 python -m peptide_experiment.cli aggregate \
     --config peptide_experiment/configs/peptide_100task_orpt_beta0.25.yaml --tasks heldout20
 
-# Figure 1/2 (expensive: one full BO run per task per milestone)
+# bo_scaling_curve / Figure 1/2 (expensive: one full BO run per task per milestone)
 python -m peptide_experiment.cli heldout_eval \
     --config peptide_experiment/configs/peptide_100task_orpt_beta0.25.yaml \
     --arm all --tasks heldout100
@@ -127,7 +128,7 @@ Optional (default shown):
 | `max_train_tasks` | `null` | Cap on train-task range; `null` -> `max(milestones)` |
 | `cuda_visible_devices` | `null` | Pins subprocess + in-process CUDA to one GPU; `null` -> don't set it. Check GPU availability with other users of the machine before setting |
 | `heldout_tasks_override` | `null` | Smoke-test escape hatch — replaces both `heldout20`/`heldout100` with a tiny custom task-index list; `null` -> use the real paper splits |
-| `table_k_checkpoints` | `[1, 100, 200, 500, 1000]` | Oracle-call checkpoints for Table 11 / Figure 1-2 aggregation |
+| `table_k_checkpoints` | `[1, 100, 200, 500, 1000]` | Oracle-call checkpoints for no_bo_milestone_eval / bo_scaling_curve aggregation (paper's Table 11 / Figure 1-2) |
 | `build_orpt` | `false` | Train an ORPT-`<m>` DPO stage on top of every BOLT-`<m>` |
 | `orpt_epochs` | `1` | Epochs per ORPT milestone training stage |
 | `orpt_pairs_per_task` | `1000` | DPO preference pairs sampled per task |
@@ -154,8 +155,8 @@ runs/<experiment_id>/
   checkpoints/BOLT-<m>/, ORPT-<m>/   # fine-tuned LoRA checkpoints per milestone
   heldout20/, heldout100/            # per-task held-out eval output, per arm
   trainset_eval/                     # (see ../experiments/constraint_violation/README.md)
-  aggregate/table11.csv              # Table 11 replica
-  aggregate/figure1_2.csv            # Figure 1/2-style scaling curve
+  aggregate/no_bo_milestone_eval.csv # Table 11 replica
+  aggregate/bo_scaling_curve.csv     # Figure 1/2-style scaling curve
 ```
 
 Downstream constraint-violation-rate / rejection-sampling analysis (not part of the
