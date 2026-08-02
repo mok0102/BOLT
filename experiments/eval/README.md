@@ -11,7 +11,7 @@ Prerequisite: one manifest YAML listing the (arm, milestone, run_dir, checkpoint
 you want to evaluate. Example: [`manifests/poc20_four_arm.yaml`](manifests/poc20_four_arm.yaml)
 (BOLT/ORPT/ORPT-FA/ORPT-LEX × milestone 5/10/20/30/40/50/60/70/80/90/100).
 
-Copy-paste the block below to run raw proposal generation → experiment 1-3 compute → plot, start
+Copy-paste the block below to run raw proposal generation → experiment 1-4 compute → plot, start
 to finish. (Only `CONFIG`/`MANIFEST` need to change. `CONFIG` doesn't select a model — it's only
 read for constants shared by every model in the manifest — `similarity_threshold`,
 `oracle_budget`, `table_k_checkpoints`, task universe (trainset/heldout definitions) — so any
@@ -39,6 +39,9 @@ python experiments/eval/plot_fixed_target_rejection_bo.py --results-dir $RESULTS
 # sanity check: python experiments/eval/fixed_budget_rejection_bo.py --config $CONFIG --manifest $MANIFEST --limit-tasks 1
 python experiments/eval/fixed_budget_rejection_bo.py --config $CONFIG --manifest $MANIFEST
 python experiments/eval/plot_fixed_budget_rejection_bo.py --results-dir $RESULTS
+
+# 4) constraint violation vs. duplication rate at a fixed sampling budget (no BO, cheap)
+python experiments/eval/violation_duplication_rate.py --config $CONFIG --manifest $MANIFEST
 ```
 
 Resulting PNGs land in `$RESULTS/plots/`. See the per-experiment sections below for exactly what
@@ -76,7 +79,7 @@ already been trained on (`range(min(cfg.milestones))`); `heldout` = `cfg.heldout
 
 ## 1. Common prerequisite step: generate raw proposals
 
-Must be run once before any of experiments 1-3, regardless of which one you run.
+Must be run once before any of experiments 1-4, regardless of which one you run.
 
 | | |
 |---|---|
@@ -102,7 +105,7 @@ Note that `--config` and `--manifest` play different roles:
   by design for this 4-arm PoC — see "0. Prerequisite" above.)
 
 If raw proposals already exist for every (arm, milestone, task_set) combination in the manifest,
-you don't need to re-run this. Experiments 1-3 below are all pure post-hoc analysis over this
+you don't need to re-run this. Experiments 1-4 below are all pure post-hoc analysis over this
 output, and never touch `checkpoint_dir` or re-invoke LLM sampling.
 
 ---
@@ -262,6 +265,55 @@ python experiments/eval/plot_fixed_budget_rejection_bo.py \
 
 ---
 
+## Experiment 4: Constraint violation vs. duplication rate (fixed sampling budget)
+
+No BO, cheap — like Experiment 1, only depends on step 0. Compute and plot are one script (unlike
+Experiments 1-3), since there's no expensive step to separate out.
+
+Answers a narrower question than Experiments 2-3's rejection rate: of the *same fixed number* of
+raw proposals `N` for every arm/milestone/task (not an adaptive draws-until-enough-collected
+count), what fraction actually violate the similarity constraint, separately from what fraction
+are merely exact duplicates of an earlier proposal. The two get silently conflated in Experiments
+2-3's `rejection_rate` (a duplicate is skipped without ever being constraint-checked, so it's
+counted as "rejected" either way) — this splits them so a model that's simply repetitive isn't
+mistaken for one that's actually constraint-violating, or vice versa. A third metric,
+`pool_rejection_rate`, then reunifies them at this same fixed `N` — it's what real pool
+construction (Experiments 2-3) actually throws away, useful for seeing which of the two causes
+dominates per arm/milestone (e.g. an arm can have a high `pool_rejection_rate` driven almost
+entirely by duplication despite a near-zero `violation_rate`).
+
+| | |
+|---|---|
+| Compute + Plot | [`violation_duplication_rate.py`](violation_duplication_rate.py) |
+
+- Input: raw proposals, `--config`, `--manifest`, `--n` (fixed sampling budget, default 500 — safe
+  as long as it's ≤ the fewest raw draws any included (arm, milestone, task) has; `generate_raw_proposals.py`
+  always produces at least `cfg.init_size` per task, 500 for this PoC's configs), `--limit-tasks`
+  (optional), `--arms` (optional, see below)
+- What it does: for each (arm, milestone, task_set, task_idx), takes the first `N` raw draws in
+  generation order (duplicates included) and computes, over that fixed `N`:
+  - `violation_rate`: fraction failing `similarity(seq, reference) < cfg.similarity_threshold`
+  - `duplication_rate`: `1 - (#unique among the N draws) / N`
+  - `pool_rejection_rate`: `1 - (#accepted) / N`, replicating `feasible_pool_with_draw_counts()`'s
+    actual pool-build rule (accept iff first occurrence of that sequence AND feasible) — not simply
+    `violation_rate + duplication_rate`, since a duplicate of an already-violating sequence isn't
+    double-counted
+- Output: `results/<manifest stem>/per_task_violation_duplication.csv`,
+  `results/<manifest stem>/summary_violation_duplication.csv`,
+  `results/<manifest stem>/plots/violation_bymilestone_<task_set>.png`,
+  `results/<manifest stem>/plots/duplication_bymilestone_<task_set>.png`,
+  `results/<manifest stem>/plots/pool_rejection_bymilestone_<task_set>.png` (one line per arm each,
+  `N` noted in the figure title)
+
+```bash
+python experiments/eval/violation_duplication_rate.py \
+    --config peptide_experiment/configs/peptide_poc20_bolt.yaml \
+    --manifest experiments/eval/manifests/poc20_four_arm.yaml \
+    --n 500
+```
+
+---
+
 ## Comparing multiple result sets in one chart
 
 Every `plot_*.py` accepts a comma-separated `--results-dir` list and concatenates them before
@@ -270,6 +322,20 @@ plotting — useful if two manifests were run separately and need to appear toge
 ```bash
 python experiments/eval/plot_incumbent_vs_pool_size.py \
     --results-dir experiments/eval/results/poc20_four_arm,experiments/eval/results/other_manifest
+```
+
+## Restricting to a subset of arms
+
+Every `plot_*.py` and `violation_duplication_rate.py` accepts `--arms` (comma-separated, e.g.
+`--arms BOLT,ORPT`) to draw a subset of arms instead of everything present in the results/manifest.
+Combine with `--out-dir` to keep the subset's figures separate from the full comparison instead of
+overwriting it:
+
+```bash
+python experiments/eval/plot_fixed_budget_rejection_bo.py \
+    --results-dir experiments/eval/results/poc20_four_arm \
+    --arms BOLT,ORPT \
+    --out-dir experiments/eval/results/comparison_bolt_orpt
 ```
 
 ## Notes
@@ -287,6 +353,7 @@ experiments/eval/
 ├── plot_fixed_target_rejection_bo.py # experiment 2 plot
 ├── fixed_budget_rejection_bo.py      # experiment 3 compute
 ├── plot_fixed_budget_rejection_bo.py # experiment 3 plot
+├── violation_duplication_rate.py     # experiment 4 compute + plot (one script)
 ├── common.py / plot_common.py        # shared utilities (manifest loading, pool construction, styling)
 └── results/                          # output CSVs/PNGs, one subdir per manifest stem (gitignored)
 ```

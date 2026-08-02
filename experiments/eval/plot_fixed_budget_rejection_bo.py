@@ -37,7 +37,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from plot_common import MUTED_TEXT, arm_colors, resolve_out_dir, sorted_arms, style_axis
+from plot_common import MUTED_TEXT, arm_colors, filter_arms, resolve_out_dir, sorted_arms, style_axis
 
 TASK_SET_LABEL = {"heldout": "held-out peptides", "trainset": "trained peptides"}
 
@@ -209,11 +209,13 @@ def main() -> None:
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
     parser.add_argument("--bo-calls", type=int, default=5000, help="bo_calls for the headline chart")
     parser.add_argument("--out-dir", default=None)
+    parser.add_argument("--arms", default=None, help="Comma-separated subset of arms to plot (default: all present)")
     args = parser.parse_args()
 
     results_dirs = [Path(d.strip()) for d in args.results_dir.split(",") if d.strip()]
-    df = load_per_task(results_dirs)
-    coverage_df = load_coverage(results_dirs)
+    arms = [a.strip() for a in args.arms.split(",")] if args.arms else None
+    df = filter_arms(load_per_task(results_dirs), arms)
+    coverage_df = filter_arms(load_coverage(results_dirs), arms)
     plots_dir = resolve_out_dir(results_dirs, args.out_dir) / "plots"
 
     for task_set in ("trainset", "heldout"):

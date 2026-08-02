@@ -52,6 +52,15 @@ def style_axis(ax) -> None:
     ax.tick_params(colors=MUTED_TEXT)
 
 
+def filter_arms(df: pd.DataFrame, arms: list[str] | None) -> pd.DataFrame:
+    """Restrict df to the given arm names (case-insensitive match against the
+    "arm" column); returns df unchanged if arms is None/empty."""
+    if not arms:
+        return df
+    wanted = {a.strip().upper() for a in arms}
+    return df[df["arm"].str.upper().isin(wanted)]
+
+
 def load_concat_csv(results_dirs: list[Path], filename: str) -> pd.DataFrame:
     """Reads `filename` from each results dir and concatenates them -- lets
     a comparison spanning several results dirs (e.g. re-run subsets) appear

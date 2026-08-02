@@ -31,7 +31,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from plot_common import MUTED_TEXT, arm_colors, load_concat_csv, resolve_out_dir, sorted_arms, style_axis
+from plot_common import MUTED_TEXT, arm_colors, filter_arms, load_concat_csv, resolve_out_dir, sorted_arms, style_axis
 
 TASK_SET_LABEL = {"heldout": "held-out peptides", "trainset": "trained peptides"}
 
@@ -163,11 +163,13 @@ def main() -> None:
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
     parser.add_argument("--n-proposals", type=int, default=10, help="n_proposals for the headline chart")
     parser.add_argument("--out-dir", default=None)
+    parser.add_argument("--arms", default=None, help="Comma-separated subset of arms to plot (default: all present)")
     args = parser.parse_args()
 
     results_dirs = [Path(d.strip()) for d in args.results_dir.split(",") if d.strip()]
-    df = load_concat_csv(results_dirs, "per_task_incumbent_vs_pool_size.csv")
-    summary_df = load_concat_csv(results_dirs, "summary_incumbent_vs_pool_size.csv")
+    arms = [a.strip() for a in args.arms.split(",")] if args.arms else None
+    df = filter_arms(load_concat_csv(results_dirs, "per_task_incumbent_vs_pool_size.csv"), arms)
+    summary_df = filter_arms(load_concat_csv(results_dirs, "summary_incumbent_vs_pool_size.csv"), arms)
     plots_dir = resolve_out_dir(results_dirs, args.out_dir) / "plots"
 
     for task_set in ("trainset", "heldout"):
