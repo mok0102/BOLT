@@ -114,7 +114,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
     parser.add_argument("--manifest", required=True)
-    parser.add_argument("--task-sets", default="trainset,heldout")
+    parser.add_argument("--task-sets", default="heldout")
     parser.add_argument(
         "--n-proposals-checkpoints",
         default=",".join(str(n) for n in DEFAULT_N_PROPOSALS_CHECKPOINTS),

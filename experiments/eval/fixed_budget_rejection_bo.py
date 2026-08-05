@@ -157,7 +157,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
     parser.add_argument("--manifest", required=True)
-    parser.add_argument("--task-sets", default="trainset,heldout")
+    parser.add_argument("--task-sets", default="heldout")
     parser.add_argument("--min-feasible", type=int, default=DEFAULT_MIN_FEASIBLE)
     parser.add_argument("--limit-tasks", type=int, default=None, help="Smoke-test: first N tasks per task_set only")
     parser.add_argument("--out-dir", default=None, help="Default: experiments/eval/results/<manifest stem>")

@@ -151,7 +151,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
     parser.add_argument("--manifest", required=True)
-    parser.add_argument("--task-sets", default="trainset,heldout")
+    parser.add_argument("--task-sets", default="heldout")
     parser.add_argument(
         "--target-pool-sizes",
         default=",".join(str(t) for t in DEFAULT_TARGET_POOL_SIZES),

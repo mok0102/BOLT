@@ -46,7 +46,7 @@ def main() -> None:
     parser.add_argument("--config", required=True, help="Any one config sharing this "
                          "manifest's similarity_threshold/init_size/task universe")
     parser.add_argument("--manifest", required=True)
-    parser.add_argument("--task-sets", default="trainset,heldout")
+    parser.add_argument("--task-sets", default="heldout")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
