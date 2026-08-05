@@ -55,6 +55,10 @@ class ExperimentConfig:
     build_orpt: bool = False
     orpt_epochs: int = 1
     orpt_pairs_per_task: int = 1000  # mirrors make_dpo_train_data_csv.py's own default
+    # Only used when orpt_loss_type == "dpo_ii_penalty" -- mirrors
+    # orpt_pairs_per_task, but for make_infeasible_singles_csv.py's
+    # individually-sampled (not paired) infeasible completions.
+    orpt_infeasible_singles_per_task: int = 1000
     orpt_beta: float = 0.1  # DPOLoss's beta (reference-relative logit scale)
     orpt_lr: float = 3e-4  # DPO optimizer learning rate
     # "feasible_only" (default, original behavior): preference pairs are built
@@ -73,7 +77,13 @@ class ExperimentConfig:
     # labels + kept both-infeasible pairs that only orpt_pairing_mode=
     # "feasibility_aware" produces (enforced in __post_init__ below) -- set
     # orpt_torchtune_recipe="fa_orpt/recipe.py" and orpt_torchtune_config=
-    # "qwen_2_5_3B_lora_fa_orpt.yaml" alongside this.
+    # "qwen_2_5_3B_lora_fa_orpt.yaml" alongside this. "dpo_ii_penalty": an
+    # ablation against fa_orpt -- keeps orpt_pairing_mode="feasible_only" and
+    # the stock DPOLoss completely untouched, and additively suppresses
+    # individually-sampled infeasible completions (fine-tuning/peptides/
+    # dpo_ii/loss.py's InfeasibleSuppressionLoss, no pairing needed) on top;
+    # set orpt_torchtune_recipe="dpo_ii/recipe.py" and orpt_torchtune_config=
+    # "poc_qwen_2_5_3B_lora_dpo_ii_penalty.yaml" alongside this.
     orpt_loss_type: str = "dpo"
     # fa_orpt loss hyperparameters (see fa_orpt/loss.py's docstring for the
     # notation); unused when orpt_loss_type == "dpo". Defaults match the

@@ -78,6 +78,46 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
     return pairs_jsonl
 
 
+def build_infeasible_singles(cfg: ExperimentConfig, milestone: int):
+    """Only used when cfg.orpt_loss_type == "dpo_ii_penalty": builds a JSONL
+    of individually-sampled (not paired) similarity-infeasible completions
+    from the same cumulative trajectory data [0, milestone) build_orpt_pairs
+    uses, via make_infeasible_singles_csv.py -- see that script's docstring
+    for why no pairing is needed for this loss's infeasible-suppression term.
+    """
+    fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
+    singles_jsonl = cfg.orpt_pairs_dir / f"orpt_infeasible_singles_{milestone}.jsonl"
+
+    if singles_jsonl.exists():
+        print(f"[orpt infeasible singles {milestone}] already exists at {singles_jsonl}, skipping")
+        return singles_jsonl
+
+    input_csvs = [cfg.trajectories_csv_dir / f"task_{i:04d}.csv" for i in range(milestone)]
+    reference_indices = [str(i) for i in range(milestone)]
+
+    _run(
+        [
+            sys.executable,
+            "make_infeasible_singles_csv.py",
+            "--input-csv",
+            *input_csvs,
+            "--reference-index",
+            *reference_indices,
+            "--output-jsonl",
+            singles_jsonl,
+            "--similarity-threshold",
+            cfg.similarity_threshold,
+            "--singles-per-input",
+            cfg.orpt_infeasible_singles_per_task,
+            "--seed",
+            42,
+        ],
+        cwd=fine_tuning_dir,
+        cfg=cfg,
+    )
+    return singles_jsonl
+
+
 def train_orpt_milestone(cfg: ExperimentConfig, milestone: int):
     """Train ORPT-<milestone>: a DPO stage on top of that same milestone's
     own BOLT-<milestone> checkpoint (pi_theta init == pi_ref, via
@@ -125,6 +165,18 @@ def train_orpt_milestone(cfg: ExperimentConfig, milestone: int):
             f"loss.gamma_f={cfg.fa_orpt_gamma_f}",
             f"loss.gamma_i={cfg.fa_orpt_gamma_i}",
             f"loss.lambda_inf={cfg.fa_orpt_lambda_inf}",
+        ]
+    elif cfg.orpt_loss_type == "dpo_ii_penalty":
+        # loss.beta (already appended above) drives the untouched stock
+        # DPOLoss; dpo_ii's InfeasibleSuppressionLoss (fine-tuning/peptides/
+        # dpo_ii/loss.py) additionally takes gamma_i/lambda_inf, and its
+        # dataset needs the individually-sampled infeasible-singles JSONL
+        # (see build_infeasible_singles above).
+        singles_jsonl = build_infeasible_singles(cfg, milestone)
+        overrides += [
+            f"ii_dataset.data_files={singles_jsonl}",
+            f"ii_loss.gamma_i={cfg.fa_orpt_gamma_i}",
+            f"ii_loss.lambda_inf={cfg.fa_orpt_lambda_inf}",
         ]
 
     _run(

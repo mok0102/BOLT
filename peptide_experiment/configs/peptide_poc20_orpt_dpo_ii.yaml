@@ -1,0 +1,42 @@
+# 5th arm of the poc20 comparison -- "ORPT-DPO+II" ablation. Fully
+# independent trajectory_chain from task 0 (no symlink reuse), same as the
+# other 3 ORPT-family poc20 arms -- see peptide_poc20_orpt.yaml's header for
+# why (checkpoint_to_sample_from() makes trajectories diverge per-arm from
+# milestone 2 onward once build_orpt: true).
+#
+# This is NOT a copy of peptide_poc20_orpt_fa.yaml's setup: the whole point
+# of this ablation is that standard ORPT (feasible_only pairing + stock
+# DPOLoss) stays completely untouched, and only an additive infeasible-
+# singles suppression term (fine-tuning/peptides/dpo_ii/loss.py) is layered
+# on top -- see peptide_poc20_orpt.yaml (the plain-DPO arm) for the config
+# this one is actually a near-copy of. orpt_pairing_mode is left at its
+# default (feasible_only), same as peptide_poc20_orpt.yaml.
+#
+# orpt_beta=0.25 / orpt_lr=2.0e-5 / orpt_epochs=1: same grid-search-confirmed
+# hyperparameters as every other real ORPT arm, reused as-is.
+# fa_orpt_gamma_i/fa_orpt_lambda_inf: reused unchanged from FA-ORPT's own
+# defaults so the suppression term's strength is identical across arms.
+#
+# See /root/.claude/plans/orpt-orpt-fa-parsed-cray.md for the full design
+# rationale and how this arm slots into experiments/eval/'s poc20 manifest.
+experiment_id: peptide_poc20_orpt_dpo_ii
+milestones: [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+cuda_visible_devices: "0"
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+heldout_tasks_override: [900, 901, 902, 903, 904]
+torchtune_config: poc_qwen_2_5_3B_lora_bsz32.yaml  # batch_size=32 across all poc20 arms
+build_orpt: true
+orpt_epochs: 1
+orpt_pairs_per_task: 1000
+orpt_infeasible_singles_per_task: 1000
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_loss_type: dpo_ii_penalty
+orpt_torchtune_recipe: dpo_ii/recipe.py
+orpt_torchtune_config: poc_qwen_2_5_3B_lora_dpo_ii_penalty.yaml
+fa_orpt_gamma_i: 0.5
+fa_orpt_lambda_inf: 1.0
