@@ -112,12 +112,10 @@ def main() -> None:
 
     all_rows = []
     for input_csv, reference_sequence in zip(args.input_csv, reference_sequences):
-        # pairing_mode="lexicographic" is used purely for its
-        # load_scored_sequences() side effect of keeping infeasible rows
-        # instead of dropping them (see that function's docstring) --
-        # no pairing actually happens here.
+        # keep_infeasible=True keeps infeasible rows instead of dropping them
+        # (see that function's docstring) -- no pairing happens here at all.
         scored_sequences = load_scored_sequences(
-            input_csv, reference_sequence, args.similarity_threshold, pairing_mode="lexicographic"
+            input_csv, reference_sequence, args.similarity_threshold, keep_infeasible=True
         )
         all_rows.extend(
             sample_infeasible_singles(

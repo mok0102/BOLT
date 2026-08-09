@@ -92,9 +92,13 @@ machine before picking one.
 | `peptide_smoke_orpt.yaml` | Same, with `build_orpt: true` |
 | `peptide_main.yaml` | Paper-fidelity BOLT-only config (`milestones: [10,20,50,600]`) |
 | `peptide_100task_bolt_v1` / `peptide_100task_orpt_beta0.25.yaml` | The real 100-task, 7-milestone sweep this repo's results are based on; `orpt_beta=0.25`/`orpt_lr=2e-5` is the grid-search-confirmed winning ORPT hyperparameter set |
-| `peptide_100task_orpt_lexicographic.yaml` | ORPT trained with `orpt_pairing_mode: lexicographic` instead of `feasible_only` (see `orpt.py`/`config.py`) |
-| `peptide_100task_orpt_fa.yaml` | ORPT trained with `orpt_loss_type: fa_orpt` (feasibility-aware loss, see `fine-tuning/peptides/fa_orpt/`) instead of the DPOLoss-based `dpo` |
 | `configs/gridsearch/*.yaml` | Single-milestone ORPT hyperparameter sweep cells (beta/lr grid) |
+
+Superseded candidate-level configs (`peptide_100task_orpt_lexicographic.yaml`,
+`peptide_100task_orpt_fa.yaml`, `peptide_poc20_orpt_lex.yaml`, `peptide_poc20_orpt_fa.yaml`,
+`peptide_100task_bolt_orpt_fa_bsz32.yaml`) were removed along with the ORPT-LEX/ORPT-FA
+implementations — see `imp_plan/05_pool_orpt_phase1_plan.md`. Still present on
+`main-swhur-fa-orpt`/other branches if needed.
 
 Write a new config rather than editing one of the above in place — each `experiment_id`
 owns its own `runs/<experiment_id>/` output dir, so a stale config edit can silently mix
@@ -131,21 +135,25 @@ Optional (default shown):
 | `table_k_checkpoints` | `[1, 100, 200, 500, 1000]` | Oracle-call checkpoints for no_bo_milestone_eval / bo_scaling_curve aggregation (paper's Table 11 / Figure 1-2) |
 | `build_orpt` | `false` | Train an ORPT-`<m>` DPO stage on top of every BOLT-`<m>` |
 | `orpt_epochs` | `1` | Epochs per ORPT milestone training stage |
-| `orpt_pairs_per_task` | `1000` | DPO preference pairs sampled per task |
+| `orpt_pairs_per_task` | `1000` | `objective_ranked` only: DPO preference pairs sampled per task (`sample_pairs()` always reaches exactly this count, or raises). `matched_intervention` uses `mi_target_pairs_per_task`/`mi_max_pair_attempts_per_task` instead, since its reliability filter can reject any given candidate |
+| `orpt_infeasible_singles_per_task` | `1000` | `dpo_ii_penalty` loss_type only: individually-sampled (not paired) infeasible completions per task, for `InfeasibleSuppressionLoss` |
 | `orpt_beta` | `0.1` | DPO loss beta (reference-relative logit scale); `0.25` is the grid-search-confirmed winner (see `peptide_100task_orpt_beta0.25.yaml`) |
 | `orpt_lr` | `3.0e-4` | DPO optimizer learning rate; `2e-5` is the grid-search-confirmed winner — **write scientific notation with a decimal point** (`2.0e-5`, not `2e-5`), otherwise PyYAML parses it as a string, not a float |
-| `orpt_pairing_mode` | `feasible_only` | Preference-pair ranking: `feasible_only` ranks by objective score among constraint-feasible candidates only; `lexicographic` keeps infeasible candidates and always ranks them behind any feasible one, skipping both-infeasible pairs (fixes naive DPO proposing constraint-violating sequences — see `experiments/constraint_violation/`); `feasibility_aware` is the same as `lexicographic` but also keeps both-infeasible pairs — **required** when `orpt_loss_type: fa_orpt` |
-| `orpt_torchtune_config` | `qwen_2_5_3B_lora_dpo.yaml` | ORPT torchtune config; alternatives: `qwen_2_5_3B_dpo.yaml` (full DPO, not LoRA), `qwen_2_5_3B_lora_fa_orpt.yaml` (pair with `orpt_loss_type: fa_orpt`) |
-| `orpt_torchtune_recipe` | `lora_dpo_distributed` | Must match `orpt_torchtune_config` — use `full_dpo_distributed` with `qwen_2_5_3B_dpo.yaml`, or `fa_orpt/recipe.py` with `qwen_2_5_3B_lora_fa_orpt.yaml` |
-| `orpt_loss_type` | `dpo` | ORPT loss: `dpo` is the stock `torchtune.rlhf.loss.DPOLoss` DPO-style ranking loss; `fa_orpt` is the feasibility-aware loss in `fine-tuning/peptides/fa_orpt/loss.py`, which separates the feasible-vs-feasible objective-ranking signal from the feasible/infeasible-vs-infeasible feasibility signal (see its docstring). Requires `orpt_pairing_mode: feasibility_aware` (enforced in `config.py`'s `__post_init__`) |
-| `fa_orpt_gamma_obj` | `0.0` | fa_orpt only: feasible-vs-feasible ranking margin |
-| `fa_orpt_gamma_plus` | `0.0` | fa_orpt only: target the winning feasible candidate's reference-relative score should rise above |
-| `fa_orpt_gamma_keep` | `-0.1` | fa_orpt only: floor the losing feasible candidate's reference-relative score shouldn't fall below |
-| `fa_orpt_lambda_up` | `0.2` | fa_orpt only: weight on the winning-feasible-candidate-should-rise term |
-| `fa_orpt_lambda_keep` | `0.2` | fa_orpt only: weight on the losing-feasible-candidate-shouldn't-fall-too-far term |
-| `fa_orpt_gamma_f` | `0.0` | fa_orpt only: target the feasible side should rise above, in a feasible-vs-infeasible pair |
-| `fa_orpt_gamma_i` | `0.5` | fa_orpt only: target below which an infeasible candidate's score should fall (feasible-vs-infeasible and infeasible-vs-infeasible pairs) |
-| `fa_orpt_lambda_inf` | `1.0` | fa_orpt only: weight on infeasible-candidate-suppression terms |
+| `orpt_pairing_mode` | `feasible_only` | Preference-pair ranking; `feasible_only` (the only supported mode) ranks by objective score among constraint-feasible candidates only. Superseded `lexicographic`/`feasibility_aware` modes were removed along with ORPT-LEX/ORPT-FA — see `imp_plan/05_pool_orpt_phase1_plan.md` |
+| `orpt_torchtune_config` | `qwen_2_5_3B_lora_dpo.yaml` | ORPT torchtune config; alternatives: `qwen_2_5_3B_dpo.yaml` (full DPO, not LoRA), `poc_qwen_2_5_3B_lora_dpo_ii_penalty.yaml` (pair with `orpt_loss_type: dpo_ii_penalty`) |
+| `orpt_torchtune_recipe` | `lora_dpo_distributed` | Must match `orpt_torchtune_config` — use `full_dpo_distributed` with `qwen_2_5_3B_dpo.yaml`, or `dpo_ii/recipe.py` with the dpo_ii config |
+| `orpt_loss_type` | `dpo` | ORPT loss: `dpo` is the stock `torchtune.rlhf.loss.DPOLoss` DPO-style ranking loss; `dpo_ii_penalty` is an ablation that keeps `dpo`'s pairing/loss untouched and additively suppresses individually-sampled infeasible completions (`fine-tuning/peptides/dpo_ii/loss.py`'s `InfeasibleSuppressionLoss`) — see its docstring. (The feasibility-aware `fa_orpt` loss type this ablation was built against was removed along with ORPT-FA.) |
+| `fa_orpt_gamma_i` | `0.5` | dpo_ii_penalty only: target below which an infeasible candidate's score should fall |
+| `fa_orpt_lambda_inf` | `1.0` | dpo_ii_penalty only: weight on the infeasible-candidate-suppression term |
+| `orpt_pair_source` | `objective_ranked` | Preference-pair *labeling mechanism* (distinct from `orpt_pairing_mode`, which only controls feasibility handling within the `objective_ranked` path): `objective_ranked` ranks by raw score via `make_dpo_train_data_csv.py`; `matched_intervention` labels pairs via a matched one-candidate-intervention evaluated with actual one-step BO instead (`peptide_experiment/mi_orpt/`) — see `paper/method.tex` |
+| `mi_num_backgrounds` | `8` | `matched_intervention` only: M, shared backgrounds sampled per intervention pair |
+| `mi_tau_q` | `1.0` | `matched_intervention` only: reference-aligned candidate distribution's softmax temperature |
+| `mi_z_min` | `1.96` | `matched_intervention` only: SNR reliability threshold a pair's paired-difference estimate must clear to be kept |
+| `mi_delta_t` | `0.0` | `matched_intervention` only: minimum \|Delta_1\| (numerical tolerance only, not a tunable effect-size floor) |
+| `mi_target_pairs_per_task` | `5` | `matched_intervention` only: stop proposing new candidate pairs once this many reliable pairs are found for a task |
+| `mi_max_pair_attempts_per_task` | `20` | `matched_intervention` only: safety cap — give up after this many candidate pairs have been tried, even short of `mi_target_pairs_per_task` (bounds real-BO-call cost when the reliability filter rarely passes) |
+| `mi_bo_steps` | `1` | `matched_intervention` only: `1` runs the paper's actual one-step BO evaluator (real oracle calls during pair construction); `0` is the zero-step ablation (rank by the pool's own best already-known value, no BO round, no additional oracle cost) |
+| `mi_parallel_gpus` | `null` | `matched_intervention` only: CUDA device ids to round-robin across for concurrent one-step BO calls (each of the M backgrounds x 2 arms per candidate pair is independent) — cuts wall-clock cost by up to `len(mi_parallel_gpus)`x. `null` -> fully serial on `cuda_visible_devices` (today's behavior). Independent of `cuda_visible_devices` (which still governs trajectory sampling/SFT/DPO training) — check `nvidia-smi` fresh before setting, this doesn't have to match `cuda_visible_devices` |
 
 ## Where results land
 
@@ -154,11 +162,11 @@ runs/<experiment_id>/
   trajectories/, trajectories_csv/   # shared BO trajectory data (all train tasks)
   checkpoints/BOLT-<m>/, ORPT-<m>/   # fine-tuned LoRA checkpoints per milestone
   heldout20/, heldout100/            # per-task held-out eval output, per arm
-  trainset_eval/                     # (see ../experiments/constraint_violation/README.md)
   aggregate/no_bo_milestone_eval.csv # Table 11 replica
   aggregate/bo_scaling_curve.csv     # Figure 1/2-style scaling curve
 ```
 
 Downstream constraint-violation-rate / rejection-sampling analysis (not part of the
-paper reproduction itself) lives in `../experiments/constraint_violation/` — see its own
-README for that pipeline.
+paper reproduction itself) lives in `../experiments/eval/` — see its own README for that
+pipeline. (The older `../experiments/constraint_violation/` framework it superseded was
+removed — see `imp_plan/05_pool_orpt_phase1_plan.md`.)

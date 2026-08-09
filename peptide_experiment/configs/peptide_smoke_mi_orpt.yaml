@@ -1,0 +1,44 @@
+# Smoke config for matched-intervention ORPT (paper/method.tex --
+# actual one-step BO evaluator). Deliberately a NEW experiment_id (see
+# peptide_smoke_orpt.yaml's own header for why -- rerunning trajectory_chain
+# against an experiment_id with existing trajectory CSVs skips resampling
+# entirely).
+#
+# init_size=5/oracle_budget=500 (kept from the earlier offline-replay-based
+# smoke pass, _v2, which found the right scale to clear
+# min_bank_size_needed(m)=m+1=6 for an untrained milestone-1 checkpoint).
+# mi_max_pair_attempts_per_task/mi_num_backgrounds are shrunk here
+# specifically because pair construction now spawns a REAL run_bo
+# subprocess per (pair, background, arm) -- unlike the old offline
+# evaluator, this is genuine oracle-consuming compute, so the attempts cap
+# is kept small; mi_num_backgrounds is kept at the real production default
+# (8, see peptide_main.yaml) rather than shrunk further, because M directly
+# controls the reliability filter's statistical power (SE of Delta_1 ~
+# 1/sqrt(M)) -- confirmed empirically that M=2 and M=4 both make
+# |Delta_1|/SE>=z_min=1.96 essentially impossible to clear at this smoke
+# scale (measured z in [1.0, 1.7] at M=4 across all 3 proposed pairs for
+# task 0; per-background diffs swing in sign/magnitude, i.e. the real
+# acquisition batch's own noise dominates a single already-known
+# candidate's marginal effect on a tiny m=5 pool), so shrinking M below the
+# real default only produces 0 trainable pairs, not a faster smoke test.
+# mi_target_pairs_per_task=1/mi_max_pair_attempts_per_task=3 replicates
+# this config's already-proven behavior (3 candidates tried, 1 kept, at
+# M=8; ~13-14s/real-BO-call measured -> up to 3*8*2=48 calls/task worst
+# case, ~11min/task, stopping earlier once the 1 target is hit).
+experiment_id: peptide_smoke_mi_orpt_onestep_v1
+milestones: [1, 2, 3]
+oracle_budget: 500
+init_size: 5
+bsz: 10
+sft_epochs: 1
+similarity_threshold: 0.75
+heldout_tasks_override: [900, 901]
+table_k_checkpoints: [1, 50, 100, 150, 200]
+cuda_visible_devices: "5"
+build_orpt: true
+orpt_epochs: 1
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 8
+mi_target_pairs_per_task: 1
+mi_max_pair_attempts_per_task: 3
+mi_bo_steps: 1

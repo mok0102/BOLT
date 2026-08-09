@@ -1,0 +1,92 @@
+# Matched-intervention (one-step BO) ORPT arm at PoC20 scale -- a
+# cleanliness/feasibility check, not a statistically powered comparison
+# against the existing peptide_poc20_orpt (objective_ranked) arm.
+#
+# Every training/signal-scale field below is copied verbatim from
+# peptide_poc20_orpt.yaml (oracle_budget/init_size/bsz/sft_epochs/
+# similarity_threshold/torchtune configs/orpt_beta/orpt_lr) -- these
+# determine background size (init_size-1=499) and the deployment batch
+# size the one-step evaluator's real acquisition round uses, which is
+# exactly the dilution question this run is meant to test (do reliable
+# pairs form at all when a single candidate is diluted among 499 shared
+# background points, vs. only 4 at smoke scale?).
+#
+# Deliberately different from peptide_poc20_orpt.yaml, as pure cost
+# levers (do not change the m=500/bsz=50 signal being tested):
+# - experiment_id: fresh run dir, no collision with the 4 already-
+#   completed PoC20 arms (runs/peptide_poc20_orpt{,_fa,_lex,_dpo_ii}/).
+# - milestones: [5,10,...,100] (full poc20 schedule). Verified
+#   milestone-5-only first (all 5 tasks hit target=10/10, 24-36 attempts
+#   each, ~35-38min total, real per-attempt cost ~15s incl. per-task
+#   overhead) before committing to this full schedule -- a real ~2.75-day
+#   multi-day run at current target/cap (555 cumulative task-instances
+#   across all 11 milestones; recompute if target/cap/z_min change).
+# - mi_target_pairs_per_task=10 / mi_max_pair_attempts_per_task=60: with
+#   the warm-worker pool (mi_orpt/warm_pool.py) + 8-GPU mi_parallel_gpus,
+#   measured real cost per candidate pair is ~6s (down from ~14-15s/call
+#   * 16 calls/pair serially, pre-warm-pool -- see session notes/plan
+#   file for the full profiling breakdown: ~84% of the old per-call cost
+#   was pure Python import overhead, now paid once per worker, not once
+#   per call). At mi_z_min=1.0 (see below), measured pass rate on a real
+#   31-candidate-pair sample was ~32% (10/31) -- target=10 needs ~31
+#   attempts on average (~31*6s~=3min/task), cap=60 gives ~2x margin
+#   (~6min/task worst case) for tasks with below-average pass rate,
+#   without letting a persistently-zero-pass-rate task run away
+#   unbounded. Full 11-milestone schedule (555 cumulative task-instances,
+#   since each milestone reprocesses every earlier task) estimated at
+#   ~1.2-1.5 days at these settings -- recompute before committing if
+#   target/cap/z_min change again.
+#   mi_num_backgrounds is NOT reduced below 8: M directly controls the
+#   filter's statistical power (SE ~ 1/sqrt(M)), and M=1 or M=2 was
+#   already shown (both at smoke scale m=5 and by construction: SE is
+#   undefined/infinite with M=1, so z=0 always fails z_min) to make the
+#   filter unconditionally unable to keep any pair -- cutting M would make
+#   the run faster but produce zero training pairs, the opposite of the
+#   goal.
+#
+# cuda_visible_devices: check nvidia-smi fresh at launch time -- do not
+# assume "0" is still free. Governs trajectory sampling/BOLT SFT/ORPT DPO
+# training only -- independent of mi_parallel_gpus below (pair
+# construction never runs concurrently with those steps, so the two
+# don't need to agree or avoid overlapping).
+#
+# mi_parallel_gpus: real-BO calls for a pair's M backgrounds (x2 arms) are
+# fully independent, dispatched across a persistent warm-worker pool
+# (mi_orpt/warm_pool.py) instead of one ephemeral subprocess per call --
+# confirmed via real-GPU timing this session (~15s cold first item per
+# worker, ~2.4s/item once warm). Using all 8 GPUs since pair construction
+# is the current bottleneck step; re-verify nvidia-smi is still free for
+# these ids at launch time (shared machine).
+experiment_id: peptide_poc20_orpt_mi
+milestones: [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+mi_parallel_gpus: ["0", "1", "2", "3", "4", "5", "6", "7"]
+cuda_visible_devices: "0"
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+heldout_tasks_override: [900, 901, 902, 903, 904]
+torchtune_config: poc_qwen_2_5_3B_lora_bsz32.yaml
+build_orpt: true
+orpt_epochs: 1
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_torchtune_config: poc_qwen_2_5_3B_lora_dpo_bsz32.yaml
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 8
+mi_tau_q: 1.0
+# 1.0 (not the standard 1.96): one-std-dev-away reliability bar, chosen
+# deliberately looser -- measured on our own 31-candidate-pair sample,
+# z_min=1.96 kept 2/31 (~6.5%), z_min=1.0 would have kept 10/31 (~32%).
+# Real tradeoff, not a free loosening: under a true-null (no real effect)
+# comparison, z_min=1.96 has a ~5% false-positive rate vs. ~32% at
+# z_min=1.0 -- accepting more noisy/possibly-mislabeled preference pairs
+# in exchange for a yield high enough to make 100+ pairs/task feasible
+# across the full milestone schedule (see plan/session notes for the
+# attempts-vs-pass-rate math this was chosen from).
+mi_z_min: 1.0
+mi_delta_t: 0.0
+mi_target_pairs_per_task: 10
+mi_max_pair_attempts_per_task: 60
+mi_bo_steps: 1

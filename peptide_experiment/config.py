@@ -61,41 +61,81 @@ class ExperimentConfig:
     orpt_infeasible_singles_per_task: int = 1000
     orpt_beta: float = 0.1  # DPOLoss's beta (reference-relative logit scale)
     orpt_lr: float = 3e-4  # DPO optimizer learning rate
-    # "feasible_only" (default, original behavior): preference pairs are built
+    # "feasible_only" is the only supported mode: preference pairs are built
     # only from similarity-constraint-feasible candidates, ranked by objective
-    # score alone. "lexicographic": infeasible candidates are kept and ranked
-    # *behind* any feasible candidate regardless of score -- the fix for
-    # naive DPO proposing constraint-violating sequences at generation time
-    # (see experiments/constraint_violation/ and make_dpo_train_data_csv.py's
-    # sample_pairs()/_pick_chosen_rejected() docstrings for the full rationale).
+    # score alone (see make_dpo_train_data_csv.py's sample_pairs()/
+    # _pick_chosen_rejected()). Superseded candidate-level modes
+    # ("lexicographic"/"feasibility_aware") were removed along with ORPT-LEX/
+    # ORPT-FA -- see imp_plan/05_pool_orpt_phase1_plan.md.
     orpt_pairing_mode: str = "feasible_only"
     orpt_torchtune_config: str = "qwen_2_5_3B_lora_dpo.yaml"
     orpt_torchtune_recipe: str = "lora_dpo_distributed"
     # "dpo" (default, unchanged): torchtune.rlhf.loss.DPOLoss via the stock
-    # lora_dpo_distributed recipe. "fa_orpt": the feasibility-aware loss in
-    # fine-tuning/peptides/fa_orpt/loss.py, which needs the feasibility
-    # labels + kept both-infeasible pairs that only orpt_pairing_mode=
-    # "feasibility_aware" produces (enforced in __post_init__ below) -- set
-    # orpt_torchtune_recipe="fa_orpt/recipe.py" and orpt_torchtune_config=
-    # "qwen_2_5_3B_lora_fa_orpt.yaml" alongside this. "dpo_ii_penalty": an
-    # ablation against fa_orpt -- keeps orpt_pairing_mode="feasible_only" and
-    # the stock DPOLoss completely untouched, and additively suppresses
-    # individually-sampled infeasible completions (fine-tuning/peptides/
-    # dpo_ii/loss.py's InfeasibleSuppressionLoss, no pairing needed) on top;
-    # set orpt_torchtune_recipe="dpo_ii/recipe.py" and orpt_torchtune_config=
-    # "poc_qwen_2_5_3B_lora_dpo_ii_penalty.yaml" alongside this.
+    # lora_dpo_distributed recipe. "dpo_ii_penalty": an ablation that keeps
+    # orpt_pairing_mode="feasible_only" and the stock DPOLoss completely
+    # untouched, and additively suppresses individually-sampled infeasible
+    # completions (fine-tuning/peptides/dpo_ii/loss.py's
+    # InfeasibleSuppressionLoss, no pairing needed) on top; set
+    # orpt_torchtune_recipe="dpo_ii/recipe.py" and orpt_torchtune_config=
+    # "poc_qwen_2_5_3B_lora_dpo_ii_penalty.yaml" alongside this. (The
+    # feasibility-aware "fa_orpt" loss type this ablation was built against
+    # was removed along with ORPT-FA -- see imp_plan/05_pool_orpt_phase1_plan.md.)
     orpt_loss_type: str = "dpo"
-    # fa_orpt loss hyperparameters (see fa_orpt/loss.py's docstring for the
-    # notation); unused when orpt_loss_type == "dpo". Defaults match the
-    # experiment spec.
-    fa_orpt_gamma_obj: float = 0.0
-    fa_orpt_gamma_plus: float = 0.0
-    fa_orpt_gamma_keep: float = -0.1
-    fa_orpt_lambda_up: float = 0.2
-    fa_orpt_lambda_keep: float = 0.2
-    fa_orpt_gamma_f: float = 0.0
+    # dpo_ii_penalty's InfeasibleSuppressionLoss hyperparameters (see
+    # fine-tuning/peptides/dpo_ii/loss.py's docstring for the notation);
+    # unused when orpt_loss_type == "dpo". Field names kept as fa_orpt_* since
+    # they were originally shared with the now-removed fa_orpt loss and
+    # renaming would touch peptide_poc20_orpt_dpo_ii.yaml for no functional
+    # gain.
     fa_orpt_gamma_i: float = 0.5
     fa_orpt_lambda_inf: float = 1.0
+
+    # Matched-intervention ORPT (paper/method.tex, paper/appendix.tex --
+    # actual one-step BO evaluator; peptide_experiment/mi_orpt/).
+    # "objective_ranked" (default, unchanged) keeps build_orpt_pairs() on the
+    # existing make_dpo_train_data_csv.py raw-score-ranking path.
+    # "matched_intervention" switches it to peptide_experiment/mi_orpt/
+    # build_pairs.py instead -- a different pair *labeling mechanism*, kept
+    # separate from orpt_pairing_mode (which stays its own, narrower
+    # "feasible_only"-only knob). Pool size m deliberately reuses init_size
+    # rather than adding a new field; pair count is its own mi_* fields
+    # below (unlike m, K's semantics genuinely differ between pairing
+    # modes -- see mi_target_pairs_per_task's docstring).
+    orpt_pair_source: str = "objective_ranked"
+    mi_num_backgrounds: int = 8  # M, shared backgrounds sampled per intervention pair
+    mi_tau_q: float = 1.0  # reference-aligned distribution q_t's softmax temperature
+    mi_z_min: float = 1.96  # SNR reliability threshold a pair's Delta_1 must clear
+    mi_delta_t: float = 0.0  # min |Delta_1| (numerical tolerance only, not a tunable effect-size floor)
+    # matched_intervention builds pairs via a target/max-attempts loop, not a
+    # fixed proposal count: orpt_pairs_per_task (objective_ranked's field)
+    # is a *guaranteed* final pair count for that pairing mode, but for
+    # matched_intervention the reliability filter can reject any given
+    # candidate, so reusing the same field would silently mean "up to this
+    # many pairs, maybe fewer, maybe zero" -- not interpretable from the
+    # config alone. These two fields keep the semantics honest: keep
+    # proposing and testing new candidate pairs until either
+    # mi_target_pairs_per_task reliable pairs are found, or
+    # mi_max_pair_attempts_per_task candidates have been tried.
+    mi_target_pairs_per_task: int = 5
+    mi_max_pair_attempts_per_task: int = 20
+    # 1 (default): the paper's actual method -- one real BO acquisition
+    # round per matched pool, real oracle calls during pair construction.
+    # 0: the zero-step ablation (paper/experiments.tex sec:ablations) --
+    # ranks by the pool's own best already-known value, no BO round, no
+    # additional oracle cost.
+    mi_bo_steps: int = 1
+    # CUDA device ids to round-robin across for concurrent one-step BO
+    # calls during matched_intervention pair construction (mi_orpt/
+    # one_step_evaluator.py). Each of the M backgrounds x 2 arms per
+    # candidate pair is independent (fully separate LOLBO subprocesses),
+    # so this cuts wall-clock cost by up to len(mi_parallel_gpus)x on a
+    # multi-GPU machine. None (default): fully serial, one call at a time
+    # on cuda_visible_devices -- today's behavior, unchanged. Independent
+    # of cuda_visible_devices, which still governs everything else
+    # (trajectory sampling, BOLT SFT, ORPT DPO training) -- these never
+    # run concurrently with pair construction, so the two can overlap or
+    # not without any runtime GPU contention.
+    mi_parallel_gpus: list[str] | None = None
 
     bolt_root: Path = BOLT_ROOT
     heldout20_tasks: list[int] = field(default_factory=lambda: list(HELDOUT20_TASKS))
@@ -106,13 +146,6 @@ class ExperimentConfig:
         if not self.base_checkpoint_dir.is_absolute():
             self.base_checkpoint_dir = self.bolt_root / self.base_checkpoint_dir
         self.milestones = sorted(self.milestones)
-        if self.orpt_loss_type == "fa_orpt" and self.orpt_pairing_mode != "feasibility_aware":
-            raise ValueError(
-                "orpt_loss_type='fa_orpt' requires orpt_pairing_mode='feasibility_aware' "
-                f"(got {self.orpt_pairing_mode!r}) -- fa_orpt's loss needs the per-side "
-                "feasibility labels and kept both-infeasible pairs that only that pairing "
-                "mode produces (see make_dpo_train_data_csv.py)."
-            )
         if self.heldout_tasks_override is not None:
             self.heldout20_tasks = list(self.heldout_tasks_override)
             self.heldout100_tasks = list(self.heldout_tasks_override)

@@ -1,8 +1,8 @@
 import copy
+import random
 import warnings
 
 import fire
-import lightning as L
 import numpy as np
 import pandas as pd
 import torch
@@ -29,6 +29,31 @@ warnings.filterwarnings("ignore")
 
 
 os.environ["WANDB_SILENT"] = "True"
+
+
+def seed_everything(seed: int | None = None) -> int:
+    """Minimal reimplementation of lightning.seed_everything's core logic
+    (random/numpy/torch seeding + PL_GLOBAL_SEED/PL_SEED_WORKERS env vars,
+    matching lightning_fabric.utilities.seed.seed_everything's source) --
+    `import lightning` costs ~8.6s per process (measured via /tmp profiling,
+    isolated from every other import), almost entirely the package's own
+    import-time dependency loading, unrelated to this handful of seeding
+    calls -- and this file is imported fresh on every real-BO subprocess
+    launch (steps.py::run_bo), so that cost was being paid on every single
+    call. None -> read PL_GLOBAL_SEED env var, default to 0 (same fallback
+    lightning used), matching every existing seed=None call site's
+    behavior exactly."""
+    if seed is None:
+        env_seed = os.environ.get("PL_GLOBAL_SEED")
+        seed = int(env_seed) if env_seed is not None else 0
+    else:
+        seed = int(seed)
+    os.environ["PL_GLOBAL_SEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    os.environ["PL_SEED_WORKERS"] = "0"
+    return seed
 
 
 class Optimize:
@@ -185,7 +210,7 @@ class Optimize:
         return self
 
     def set_seed(self):
-        L.seed_everything(self.seed)
+        seed_everything(self.seed)
         torch.set_float32_matmul_precision("highest")
         return self
 

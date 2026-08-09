@@ -271,10 +271,22 @@ def run_bo(
     init_path: Path | None = None,
     scores_path: Path | None = None,
     stbo: bool = False,
+    seed: int | None = None,
 ) -> Path:
     """Run one single-task BO trial (BOLT arm if init_path/scores_path are
     given, STBO arm if stbo=True) and return the path to its collected-data
     CSV (train_x, train_y), copied into `work_dir` for permanence.
+
+    seed is an additive, opt-in knob (default None reproduces the exact
+    subprocess CLI this function has always built): peptide_experiment/
+    mi_orpt/one_step_evaluator.py::run_matched_pair_one_step needs a
+    matched random seed between the two one-step BO intervention arms of
+    one matched comparison (paper/method.tex sec:one-step-pool-evaluation).
+    Forwards directly to Optimize's own (already-existing, otherwise-unused)
+    `--seed` constructor kwarg. Matched VAE initialization between the two
+    arms needs no extra plumbing here: info_transformer_vae_optimization.py's
+    own `path_to_vae_statedict` default already points both arms at the same
+    fixed pretrained checkpoint unless overridden.
     """
     work_dir.mkdir(parents=True, exist_ok=True)
     dest_csv = work_dir / f"task_{task_idx:04d}.csv"
@@ -325,6 +337,8 @@ def run_bo(
             "--init_scores_path",
             scores_path,
         ]
+    if seed is not None:
+        cmd += ["--seed", seed]
     cmd.append("run_lolbo")
 
     _run(cmd, cwd=lolbo_scripts_dir, cfg=cfg)

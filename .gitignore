@@ -223,6 +223,9 @@ __marimo__/
 # Peptide BOLT/ORPT experiment harness -- generated run outputs, not source
 runs/
 
+# Local test suite -- not tracked
+tests/
+
 # experiments/ holds real, reused eval/comparison source (*.py) -- track that; the
 # generated per-run CSVs/PNGs and __pycache__ under it are not source, ignore those
 experiments/*/results/

@@ -16,6 +16,7 @@ checkpoint that samples subsequent tasks.
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 
 from .config import ExperimentConfig
@@ -26,21 +27,23 @@ FINE_TUNING_DIR = "fine-tuning/peptides"
 
 def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
     """Build preference pairs from the same cumulative trajectory data
-    [0, milestone) that BOLT-<milestone>'s own SFT dataset uses, via the
-    original codebase's own uniform-random-pairing strategy (verified
-    byte-identical against /workspace/mok/BOLT's make_dpo_train_data_csv.py
-    for cfg.orpt_pairing_mode == "feasible_only", its default).
+    [0, milestone) that BOLT-<milestone>'s own SFT dataset uses.
 
-    cfg.orpt_pairing_mode controls how the similarity constraint
-    (make_dpo_train_data_csv.py's --similarity-threshold) factors into
-    pairing: "feasible_only" restricts to constraint-feasible candidates and
-    ranks purely by objective score (original behavior); "lexicographic"
-    keeps infeasible candidates and ranks feasibility ahead of objective
-    score, so the model is taught "infeasible loses" regardless of how good
-    its score looks -- see make_dpo_train_data_csv.py's
-    sample_pairs()/_pick_chosen_rejected() for the ranking rule itself.
+    Dispatches on cfg.orpt_pair_source (imp_plan/06_orpt_matched_intervention_plan.md):
+    "objective_ranked" (default) uses the original codebase's own
+    uniform-random-pairing strategy (verified byte-identical against
+    /workspace/mok/BOLT's make_dpo_train_data_csv.py for
+    cfg.orpt_pairing_mode == "feasible_only", its default) -- restricts to
+    constraint-feasible candidates and ranks purely by objective score (see
+    that script's sample_pairs()/_pick_chosen_rejected()).
+    "matched_intervention" instead labels pairs via a matched one-candidate
+    intervention evaluated with actual one-step BO (paper/method.tex;
+    peptide_experiment/mi_orpt/) -- real oracle calls during pair
+    construction, per cfg.mi_bo_steps (1 = one-step BO, 0 = the zero-step
+    ablation with no additional oracle cost). pi_ref for this is plain
+    BOLT-<milestone> itself, since no ORPT LoRA adapter exists yet for this
+    milestone.
     """
-    fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
     pairs_csv = cfg.orpt_pairs_dir / f"orpt_pairs_{milestone}.csv"
     pairs_jsonl = cfg.orpt_pairs_dir / f"orpt_pairs_{milestone}.jsonl"
 
@@ -51,6 +54,70 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
     input_csvs = [cfg.trajectories_csv_dir / f"task_{i:04d}.csv" for i in range(milestone)]
     reference_indices = [str(i) for i in range(milestone)]
 
+    if cfg.orpt_pair_source == "matched_intervention":
+        torchtune_config_path = cfg.bolt_root / FINE_TUNING_DIR / "torchtune_config" / cfg.torchtune_config
+        cmd = [
+            sys.executable,
+            "-m",
+            "peptide_experiment.mi_orpt.build_pairs",
+            "--input-csv",
+            *input_csvs,
+            "--reference-index",
+            *reference_indices,
+            "--output-csv",
+            pairs_csv,
+            "--output-jsonl",
+            pairs_jsonl,
+            "--torchtune-config",
+            torchtune_config_path,
+            "--checkpoint-dir",
+            cfg.milestone_checkpoint_dir(milestone),
+            "--similarity-threshold",
+            cfg.similarity_threshold,
+            "--m",
+            cfg.init_size,
+            "--target-pairs-per-task",
+            cfg.mi_target_pairs_per_task,
+            "--max-pair-attempts-per-task",
+            cfg.mi_max_pair_attempts_per_task,
+            "--num-backgrounds",
+            cfg.mi_num_backgrounds,
+            "--tau-q",
+            cfg.mi_tau_q,
+            "--z-min",
+            cfg.mi_z_min,
+            "--delta-t",
+            cfg.mi_delta_t,
+            "--bo-steps",
+            cfg.mi_bo_steps,
+            "--experiment-id",
+            cfg.experiment_id,
+            "--bsz",
+            cfg.bsz,
+            "--task-specific-args",
+            cfg.task_specific_args,
+            "--seed",
+            42,
+        ]
+        if cfg.cuda_visible_devices is not None:
+            cmd += ["--cuda-visible-devices", cfg.cuda_visible_devices]
+        launch_cfg = cfg
+        if cfg.mi_parallel_gpus:
+            cmd += ["--parallel-gpus", *cfg.mi_parallel_gpus]
+            # CUDA_VISIBLE_DEVICES only narrows going down a process tree --
+            # this build_pairs.py subprocess (and the LOLBO grandchildren it
+            # spawns) must see every GPU in the pool up front so each
+            # grandchild's own narrower per-call override can still resolve
+            # to the right physical device (mi_orpt/one_step_evaluator.py::
+            # run_matched_pairs_one_step). A single cuda_visible_devices pin
+            # here would otherwise silently collapse every parallel call
+            # onto just that one GPU.
+            launch_cfg = dataclasses.replace(cfg, cuda_visible_devices=",".join(cfg.mi_parallel_gpus))
+        _run(cmd, cwd=cfg.bolt_root, cfg=launch_cfg)
+        return pairs_jsonl
+
+    assert cfg.orpt_pair_source == "objective_ranked", cfg.orpt_pair_source
+    fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
     _run(
         [
             sys.executable,
@@ -139,6 +206,24 @@ def train_orpt_milestone(cfg: ExperimentConfig, milestone: int):
 
     fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
     pairs_jsonl = build_orpt_pairs(cfg, milestone)
+    if pairs_jsonl.stat().st_size == 0:
+        # Only reachable via orpt_pair_source="matched_intervention" --
+        # "objective_ranked"'s sample_pairs() always either reaches
+        # orpt_pairs_per_task or raises, so it can never produce an empty
+        # file. matched_intervention's reliability filter can legitimately
+        # yield zero pairs for every task in a milestone (paper/appendix.tex
+        # app:pair-construction's reliability criterion) -- surface that
+        # clearly instead of letting torchtune's DPO recipe fail on an
+        # empty dataset with an opaque ChildFailedError.
+        raise RuntimeError(
+            f"[orpt milestone {milestone}] {pairs_jsonl} has 0 preference pairs "
+            f"(orpt_pair_source={cfg.orpt_pair_source!r}) -- nothing to train ORPT-{milestone} on. "
+            "Likely cause: eligible bank too small at this milestone/scale for "
+            "min_bank_size_needed(m)=m+1 across every task. Not auto-skipped: "
+            "downstream checkpoint_to_sample_from() has no fallback for a missing "
+            "ORPT-<m> when build_orpt=True, so silently continuing would only move "
+            "the failure later and obscure the cause."
+        )
 
     overrides = [
         f"output_dir={ckpt_dir}",
@@ -152,21 +237,7 @@ def train_orpt_milestone(cfg: ExperimentConfig, milestone: int):
         "seed=42",
         f"metric_logger.log_dir={cfg.tensorboard_dir / f'ORPT-{milestone}'}",
     ]
-    if cfg.orpt_loss_type == "fa_orpt":
-        # DPOLoss only takes loss.beta (already appended above); fa_orpt's
-        # loss (fine-tuning/peptides/fa_orpt/loss.py) additionally takes
-        # these 8 hyperparameters -- see its docstring for the notation.
-        overrides += [
-            f"loss.gamma_obj={cfg.fa_orpt_gamma_obj}",
-            f"loss.gamma_plus={cfg.fa_orpt_gamma_plus}",
-            f"loss.gamma_keep={cfg.fa_orpt_gamma_keep}",
-            f"loss.lambda_up={cfg.fa_orpt_lambda_up}",
-            f"loss.lambda_keep={cfg.fa_orpt_lambda_keep}",
-            f"loss.gamma_f={cfg.fa_orpt_gamma_f}",
-            f"loss.gamma_i={cfg.fa_orpt_gamma_i}",
-            f"loss.lambda_inf={cfg.fa_orpt_lambda_inf}",
-        ]
-    elif cfg.orpt_loss_type == "dpo_ii_penalty":
+    if cfg.orpt_loss_type == "dpo_ii_penalty":
         # loss.beta (already appended above) drives the untouched stock
         # DPOLoss; dpo_ii's InfeasibleSuppressionLoss (fine-tuning/peptides/
         # dpo_ii/loss.py) additionally takes gamma_i/lambda_inf, and its

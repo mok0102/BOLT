@@ -1,7 +1,6 @@
 import itertools
 import os
 
-import lightning as pl
 import numpy as np
 import pandas as pd
 import torch
@@ -16,9 +15,17 @@ parent_dir = os.path.dirname(file_dir)
 sys.path.append(f"{parent_dir}")
 
 
-class DataModuleKmers(pl.LightningDataModule):
+class DataModuleKmers:
+    """Was pl.LightningDataModule -- dropped: nothing in this codebase ever
+    instantiates a Lightning Trainer against it (grepped the whole repo),
+    so train_dataloader()/val_dataloader()/test_dataloader() below are
+    plain methods, never invoked as Lightning hooks. The only real
+    consumer, uniref_vae/load_vae.py, only ever reads .train directly for
+    tokenization -- importing all of `lightning` (~8.6s, measured) just
+    for an unused base class was pure overhead paid on every real-BO
+    subprocess launch (steps.py::run_bo)."""
+
     def __init__(self, batch_size, k, version=1, load_data=True):
-        super().__init__()
         self.batch_size = batch_size
         if version == 1:
             DatasetClass = DatasetKmers
