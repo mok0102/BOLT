@@ -28,7 +28,7 @@ from torchtune import rlhf
 from torchtune.data import CROSS_ENTROPY_IGNORE_IDX, Message
 
 
-def _load_model_and_tokenizer(torchtune_config_path: Path, checkpoint_dir: Path):
+def load_model_and_tokenizer(torchtune_config_path: Path, checkpoint_dir: Path):
     cfg = OmegaConf.load(torchtune_config_path)
     cfg.checkpointer.checkpoint_dir = str(checkpoint_dir)
     # This scorer never calls save_checkpoint() -- output_dir only exists to
@@ -56,8 +56,8 @@ def _load_model_and_tokenizer(torchtune_config_path: Path, checkpoint_dir: Path)
 
 
 def score_sequences(
-    torchtune_config_path: Path,
-    checkpoint_dir: Path,
+    model,
+    tokenizer,
     context: str,
     sequences: list[str],
     system_prompt: str,
@@ -67,9 +67,14 @@ def score_sequences(
     sequence, teacher-forced under the given checkpoint. `context` is the
     reference peptide (the "user" turn); `sequences` are the assistant
     completions to score -- the same message shape
-    make_dpo_train_data_csv.py::make_messages builds."""
-    model, tokenizer = _load_model_and_tokenizer(torchtune_config_path, checkpoint_dir)
+    make_dpo_train_data_csv.py::make_messages builds.
 
+    Takes an already-loaded model/tokenizer (load_model_and_tokenizer())
+    rather than loading them itself -- every task within one build_pairs.py
+    invocation scores against the exact same milestone checkpoint, so the
+    ~3.25s model load (measured) should happen once per milestone, not once
+    per task (build_pairs.py::main() and mi_orpt/warm_scoring_pool.py are
+    the two call sites that now own that loading)."""
     log_probs: list[float] = []
     with torch.no_grad():
         for start in range(0, len(sequences), batch_size):

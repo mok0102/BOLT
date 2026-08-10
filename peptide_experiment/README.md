@@ -135,7 +135,7 @@ Optional (default shown):
 | `table_k_checkpoints` | `[1, 100, 200, 500, 1000]` | Oracle-call checkpoints for no_bo_milestone_eval / bo_scaling_curve aggregation (paper's Table 11 / Figure 1-2) |
 | `build_orpt` | `false` | Train an ORPT-`<m>` DPO stage on top of every BOLT-`<m>` |
 | `orpt_epochs` | `1` | Epochs per ORPT milestone training stage |
-| `orpt_pairs_per_task` | `1000` | `objective_ranked` only: DPO preference pairs sampled per task (`sample_pairs()` always reaches exactly this count, or raises). `matched_intervention` uses `mi_target_pairs_per_task`/`mi_max_pair_attempts_per_task` instead, since its reliability filter can reject any given candidate |
+| `orpt_pairs_per_task` | `1000` | `objective_ranked` only: DPO preference pairs sampled per task (`sample_pairs()` always reaches exactly this count, or raises). `matched_intervention` uses `mi_target_pairs_per_task`/`mi_max_candidates_per_task` instead, since its reliability filter can reject any given candidate |
 | `orpt_infeasible_singles_per_task` | `1000` | `dpo_ii_penalty` loss_type only: individually-sampled (not paired) infeasible completions per task, for `InfeasibleSuppressionLoss` |
 | `orpt_beta` | `0.1` | DPO loss beta (reference-relative logit scale); `0.25` is the grid-search-confirmed winner (see `peptide_100task_orpt_beta0.25.yaml`) |
 | `orpt_lr` | `3.0e-4` | DPO optimizer learning rate; `2e-5` is the grid-search-confirmed winner — **write scientific notation with a decimal point** (`2.0e-5`, not `2e-5`), otherwise PyYAML parses it as a string, not a float |
@@ -146,14 +146,14 @@ Optional (default shown):
 | `fa_orpt_gamma_i` | `0.5` | dpo_ii_penalty only: target below which an infeasible candidate's score should fall |
 | `fa_orpt_lambda_inf` | `1.0` | dpo_ii_penalty only: weight on the infeasible-candidate-suppression term |
 | `orpt_pair_source` | `objective_ranked` | Preference-pair *labeling mechanism* (distinct from `orpt_pairing_mode`, which only controls feasibility handling within the `objective_ranked` path): `objective_ranked` ranks by raw score via `make_dpo_train_data_csv.py`; `matched_intervention` labels pairs via a matched one-candidate-intervention evaluated with actual one-step BO instead (`peptide_experiment/mi_orpt/`) — see `paper/method.tex` |
-| `mi_num_backgrounds` | `8` | `matched_intervention` only: M, shared backgrounds sampled per intervention pair |
+| `mi_num_backgrounds` | `8` | `matched_intervention` only: M, shared backgrounds sampled once per task and reused across every candidate evaluated for it |
 | `mi_tau_q` | `1.0` | `matched_intervention` only: reference-aligned candidate distribution's softmax temperature |
 | `mi_z_min` | `1.96` | `matched_intervention` only: SNR reliability threshold a pair's paired-difference estimate must clear to be kept |
 | `mi_delta_t` | `0.0` | `matched_intervention` only: minimum \|Delta_1\| (numerical tolerance only, not a tunable effect-size floor) |
-| `mi_target_pairs_per_task` | `5` | `matched_intervention` only: stop proposing new candidate pairs once this many reliable pairs are found for a task |
-| `mi_max_pair_attempts_per_task` | `20` | `matched_intervention` only: safety cap — give up after this many candidate pairs have been tried, even short of `mi_target_pairs_per_task` (bounds real-BO-call cost when the reliability filter rarely passes) |
+| `mi_target_pairs_per_task` | `5` | `matched_intervention` only: stop evaluating new candidates once this many reliable pairs are found for a task |
+| `mi_max_candidates_per_task` | `20` | `matched_intervention` only: safety cap — give up after evaluating this many candidates, even short of `mi_target_pairs_per_task` (each candidate costs exactly `mi_num_backgrounds` real-BO calls; bounds real-BO-call cost when the reliability filter rarely passes) |
 | `mi_bo_steps` | `1` | `matched_intervention` only: `1` runs the paper's actual one-step BO evaluator (real oracle calls during pair construction); `0` is the zero-step ablation (rank by the pool's own best already-known value, no BO round, no additional oracle cost) |
-| `mi_parallel_gpus` | `null` | `matched_intervention` only: CUDA device ids to round-robin across for concurrent one-step BO calls (each of the M backgrounds x 2 arms per candidate pair is independent) — cuts wall-clock cost by up to `len(mi_parallel_gpus)`x. `null` -> fully serial on `cuda_visible_devices` (today's behavior). Independent of `cuda_visible_devices` (which still governs trajectory sampling/SFT/DPO training) — check `nvidia-smi` fresh before setting, this doesn't have to match `cuda_visible_devices` |
+| `mi_parallel_gpus` | `null` | `matched_intervention` only: CUDA device ids to round-robin across for concurrent one-step BO calls (each of a candidate's M background evaluations is independent) — cuts wall-clock cost by up to `len(mi_parallel_gpus)`x. `null` -> fully serial on `cuda_visible_devices` (today's behavior). Independent of `cuda_visible_devices` (which still governs trajectory sampling/SFT/DPO training) — check `nvidia-smi` fresh before setting, this doesn't have to match `cuda_visible_devices` |
 
 ## Where results land
 

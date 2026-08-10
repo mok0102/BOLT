@@ -78,8 +78,8 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
             cfg.init_size,
             "--target-pairs-per-task",
             cfg.mi_target_pairs_per_task,
-            "--max-pair-attempts-per-task",
-            cfg.mi_max_pair_attempts_per_task,
+            "--max-candidates-per-task",
+            cfg.mi_max_candidates_per_task,
             "--num-backgrounds",
             cfg.mi_num_backgrounds,
             "--tau-q",
@@ -109,7 +109,7 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
             # spawns) must see every GPU in the pool up front so each
             # grandchild's own narrower per-call override can still resolve
             # to the right physical device (mi_orpt/one_step_evaluator.py::
-            # run_matched_pairs_one_step). A single cuda_visible_devices pin
+            # run_candidate_one_step). A single cuda_visible_devices pin
             # here would otherwise silently collapse every parallel call
             # onto just that one GPU.
             launch_cfg = dataclasses.replace(cfg, cuda_visible_devices=",".join(cfg.mi_parallel_gpus))

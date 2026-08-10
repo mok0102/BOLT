@@ -21,7 +21,7 @@ Usage (run from the BOLT repo root, matching build_orpt_pairs' cwd):
         --output-csv pairs.csv --output-jsonl pairs.jsonl \\
         --torchtune-config qwen_2_5_3B_lora.yaml --checkpoint-dir BOLT-2 \\
         --experiment-id <id> --bsz 50 --oracle-budget 5000 \\
-        --m 500 --target-pairs-per-task 5 --max-pair-attempts-per-task 20
+        --m 500 --target-pairs-per-task 5 --max-candidates-per-task 20
 """
 
 from __future__ import annotations
@@ -40,10 +40,10 @@ if str(FINE_TUNING_DIR) not in sys.path:
 from make_dpo_train_data_csv import SYSTEM_PROMPT, load_reference_sequence, make_messages  # noqa: E402
 
 from ..config import ExperimentConfig
-from .candidate_bank import build_eligible_bank
-from .likelihood import score_sequences
+from .candidate_bank import build_eligible_bank, min_bank_size_needed
 from .pair_construction import construct_pairs_for_task
 from .warm_pool import create_pool
+from .warm_scoring_pool import create_scoring_pool, score_sequences_parallel
 
 PAIRS_CSV_FIELDNAMES = ["reference_sequence", "chosen_sequence", "rejected_sequence", "chosen_score", "rejected_score", "delta", "se"]
 
@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--similarity-threshold", type=float, default=0.75)
     parser.add_argument("--m", type=int, required=True, help="pool size -- reuses cfg.init_size")
     parser.add_argument("--target-pairs-per-task", type=int, required=True, help="stop once this many reliable pairs are found for a task")
-    parser.add_argument("--max-pair-attempts-per-task", type=int, required=True, help="give up after this many candidate pairs tried, even short of target")
+    parser.add_argument("--max-candidates-per-task", type=int, required=True, help="give up after evaluating this many candidates, even short of target -- each candidate costs exactly --num-backgrounds real-BO calls")
     parser.add_argument("--num-backgrounds", type=int, default=8, help="M")
     parser.add_argument("--tau-q", type=float, default=1.0)
     parser.add_argument("--z-min", type=float, default=1.96)
@@ -119,21 +119,62 @@ def main() -> None:
     # made during this entire build_pairs.py invocation, not just one
     # task's worth (mi_orpt/warm_pool.py).
     worker_pool = create_pool(args.parallel_gpus, cfg.bolt_root) if args.parallel_gpus else None
+    # Same rationale, applied to reference-model scoring (likelihood.py):
+    # every task in this invocation scores against the exact same milestone
+    # checkpoint, so the model loads once here -- either once per GPU in a
+    # parallel scoring pool (chunked across GPUs per task), or once total
+    # in the serial fallback -- never once per task (measured ~3.25s wasted
+    # per task previously, plus scoring itself was 100% serialized on a
+    # single GPU regardless of mi_parallel_gpus; see mi_orpt/warm_scoring_pool.py).
+    scoring_pool = create_scoring_pool(args.parallel_gpus, args.torchtune_config, args.checkpoint_dir) if args.parallel_gpus else None
+    scoring_model = scoring_tokenizer = None
+    if scoring_pool is None:
+        # Lazy on purpose: likelihood.py imports torchtune, which
+        # eagerly initializes a CUDA context on the *default* device
+        # (physical GPU matching whatever index 0 resolves to) just by
+        # being imported -- see warm_pool.py's own docstring for why this
+        # class of bug is dangerous specifically at this module's top
+        # level. Every worker warm_pool.py/warm_scoring_pool.py spawns
+        # re-executes build_pairs.py's top-level imports (multiprocessing
+        # "spawn" + "-m" entry-point re-import), *before* that worker's
+        # own per-GPU CUDA_VISIBLE_DEVICES narrowing runs -- a top-level
+        # import here would silently pin every worker's CUDA context to
+        # the wide, unnarrowed device view (physical GPU 0 as the
+        # default), making the later narrowing a no-op and collapsing
+        # every worker onto the same physical GPU (confirmed via a real
+        # OOM: 8 one-step-BO workers all landing on GPU 0). Deferring the
+        # import to here means it only ever runs in the main process,
+        # after cuda_visible_devices/parallel-gpus have already been
+        # decided, and only when the serial (no --parallel-gpus) fallback
+        # path is actually taken.
+        from .likelihood import load_model_and_tokenizer, score_sequences
+
+        scoring_model, scoring_tokenizer = load_model_and_tokenizer(args.torchtune_config, args.checkpoint_dir)
     try:
         all_pairs: list[dict] = []
         for input_csv, task_idx, reference_sequence in zip(args.input_csv, args.reference_index, reference_sequences):
             bank = build_eligible_bank(input_csv, reference_sequence, args.similarity_threshold)
-            if len(bank) < args.m + 1:
-                print(f"[build_pairs] {input_csv}: bank has {len(bank)} candidates, need >= {args.m + 1}, skipping task")
+            min_needed = min_bank_size_needed(args.m, num_reserved=args.max_candidates_per_task)
+            if len(bank) < min_needed:
+                print(f"[build_pairs] {input_csv}: bank has {len(bank)} candidates, need >= {min_needed}, skipping task")
                 continue
 
-            log_probs = score_sequences(
-                torchtune_config_path=args.torchtune_config,
-                checkpoint_dir=args.checkpoint_dir,
-                context=reference_sequence,
-                sequences=[c.seq for c in bank],
-                system_prompt=SYSTEM_PROMPT,
-            )
+            if scoring_pool is not None:
+                log_probs = score_sequences_parallel(
+                    scoring_pool,
+                    len(args.parallel_gpus),
+                    context=reference_sequence,
+                    sequences=[c.seq for c in bank],
+                    system_prompt=SYSTEM_PROMPT,
+                )
+            else:
+                log_probs = score_sequences(
+                    scoring_model,
+                    scoring_tokenizer,
+                    context=reference_sequence,
+                    sequences=[c.seq for c in bank],
+                    system_prompt=SYSTEM_PROMPT,
+                )
             log_likelihoods = {c.seq: lp for c, lp in zip(bank, log_probs)}
 
             work_dir_root = cfg.orpt_pairs_dir / "mi_onestep_bo" / f"task_{task_idx:04d}"
@@ -145,7 +186,7 @@ def main() -> None:
                 log_likelihoods=log_likelihoods,
                 m=args.m,
                 target_pairs=args.target_pairs_per_task,
-                max_attempts=args.max_pair_attempts_per_task,
+                max_candidates=args.max_candidates_per_task,
                 num_backgrounds=args.num_backgrounds,
                 tau_q=args.tau_q,
                 z_min=args.z_min,
@@ -159,6 +200,8 @@ def main() -> None:
     finally:
         if worker_pool is not None:
             worker_pool.shutdown(wait=True)
+        if scoring_pool is not None:
+            scoring_pool.shutdown(wait=True)
 
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
     with args.output_csv.open("w", newline="") as f_out:

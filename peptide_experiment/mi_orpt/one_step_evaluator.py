@@ -14,6 +14,14 @@ over S plus that one batch).
 Also supports the zero-step ablation (experiments.tex sec:ablations,
 "matched zero-step pool-outcome tuning"): rank by the pool's own
 best-already-known value, no BO round, zero additional oracle cost.
+
+pair_construction.py's cache-and-reuse design (memos/suggestion.txt)
+evaluates one candidate against a *shared, fixed* set of M backgrounds at
+a time (run_candidate_one_step below), rather than evaluating two
+candidates (an "arm" pair) against M *independently redrawn per pair*
+backgrounds -- reusing the same M evaluations across every pairwise
+comparison derived from them instead of paying fresh evaluations per
+comparison.
 """
 
 from __future__ import annotations
@@ -56,110 +64,68 @@ def run_one_step_pool(
     return float(df["train_y"].max())
 
 
-def run_matched_pair_one_step(
-    cfg: ExperimentConfig,
-    task_idx: int,
-    background: list[EligibleCandidate],
-    x_i: EligibleCandidate,
-    x_j: EligibleCandidate,
-    work_dir_root: Path,
-    seed: int,
-) -> tuple[float, float]:
-    """Runs the one-step evaluator for S_i=A+[x_i] and S_j=A+[x_j], unique
-    work dirs per arm (steps.run_bo()'s dest_csv is keyed by task_idx only
-    within a work_dir, so distinct arms need distinct dirs). Same seed for
-    both arms: matches surrogate/acquisition random state as far as
-    steps.run_bo()'s existing --seed hook allows; oracle noise that can't
-    be coupled is treated as ordinary outcome variability (appendix.tex
-    app:noisy-one-step-evaluator).
-
-    run_id is derived from work_dir_root's own unique path components (not
-    just the arm label) because steps.run_bo() stages its raw LOLBO output
-    at a *shared* path keyed only by {experiment_id}_{run_id}_task_{task_idx}
-    (optimization_all_collected_data/) before copying it into work_dir --
-    two concurrent calls for the same task_idx+label (run_matched_pairs_one_step's
-    parallel dispatch) would otherwise race on that shared filename."""
-    background_seqs = [c.seq for c in background]
-    background_ys = [c.y for c in background]
-    run_id_suffix = "-".join(work_dir_root.parts[-2:]) if len(work_dir_root.parts) >= 2 else work_dir_root.name
-
-    u1 = {}
-    for label, candidate in (("i", x_i), ("j", x_j)):
-        pool_seqs = background_seqs + [candidate.seq]
-        pool_ys = background_ys + [candidate.y]
-        work_dir = work_dir_root / label
-        run_id = f"mi-onestep-{label}-{run_id_suffix}"
-        u1[label] = run_one_step_pool(cfg, task_idx, pool_seqs, pool_ys, work_dir, run_id, seed)
-
-    return u1["i"], u1["j"]
-
-
-def run_matched_pairs_one_step(
+def run_candidate_one_step(
     cfg: ExperimentConfig,
     task_idx: int,
     backgrounds: list[list[EligibleCandidate]],
-    x_i: EligibleCandidate,
-    x_j: EligibleCandidate,
-    pair_work_dir: Path,
+    candidate: EligibleCandidate,
+    cand_work_dir: Path,
     seeds: list[int],
     worker_pool: ProcessPoolExecutor | None = None,
 ) -> list[float]:
-    """Returns [u1_i - u1_j, ...] in the same order as `backgrounds`. Each
-    background (and its two arms) is fully independent real-BO work.
+    """Evaluates `candidate` against every given (fixed, shared-across-the-
+    whole-task) background, returning [U1(A_r + candidate) for r in
+    backgrounds] in the same order as `backgrounds`. Each background
+    evaluation is fully independent real-BO work.
 
-    worker_pool=None (default): runs run_matched_pair_one_step serially,
-    one call at a time on cfg.cuda_visible_devices -- unchanged fallback
-    behavior for configs without mi_parallel_gpus set.
+    worker_pool=None (default): runs run_one_step_pool serially, one call
+    at a time on cfg.cuda_visible_devices.
 
-    worker_pool given (mi_orpt/warm_pool.py's create_pool(), created once
-    per build_pairs.py invocation and shared across every task/pair in
-    that milestone): flattens to one work item per (background, arm) --
-    2x per background -- and dispatches all of them to the pool at once.
-    No per-item GPU pinning needed here (unlike the old thread+subprocess
-    dispatch this replaced): each worker already permanently owns one GPU,
-    claimed once at pool-creation time, and -- critically -- already has
-    the whole LOLBO import stack warmed up, so per-item cost is just the
-    real work (~2s), not ~13s of Python imports repeated every call."""
-    assert len(backgrounds) == len(seeds)
-    work_dirs = [pair_work_dir / f"bg_{bg_idx:03d}" for bg_idx in range(len(backgrounds))]
+    worker_pool given (mi_orpt/warm_pool.py's create_pool()): dispatches
+    all M evaluations concurrently across the pool -- no per-item GPU
+    pinning needed here, each worker already permanently owns one GPU and
+    has the LOLBO import stack warmed up (see warm_pool.py)."""
+    background_seqs_ys = [([c.seq for c in bg], [c.y for c in bg]) for bg in backgrounds]
+    work_dirs = [cand_work_dir / f"bg_{bg_idx:03d}" for bg_idx in range(len(backgrounds))]
 
     if worker_pool is None:
-        diffs = []
-        for background, work_dir, seed in zip(backgrounds, work_dirs, seeds):
-            u1_i, u1_j = run_matched_pair_one_step(cfg, task_idx, background, x_i, x_j, work_dir, seed)
-            diffs.append(u1_i - u1_j)
-        return diffs
+        return [
+            run_one_step_pool(
+                cfg,
+                task_idx,
+                bg_seqs + [candidate.seq],
+                bg_ys + [candidate.y],
+                work_dir,
+                run_id=f"mi-onestep-{'-'.join(work_dir.parts[-2:])}",
+                seed=seed,
+            )
+            for (bg_seqs, bg_ys), work_dir, seed in zip(background_seqs_ys, work_dirs, seeds)
+        ]
 
-    futures: dict[Future, tuple[int, str]] = {}
-    for bg_idx, (background, work_dir, seed) in enumerate(zip(backgrounds, work_dirs, seeds)):
-        background_seqs = [c.seq for c in background]
-        background_ys = [c.y for c in background]
-        for label, candidate in (("i", x_i), ("j", x_j)):
-            arm_work_dir = work_dir / label
-            payload = {
-                "cfg": cfg,
-                "task_idx": task_idx,
-                "pool_seqs": background_seqs + [candidate.seq],
-                "pool_ys": background_ys + [candidate.y],
-                "work_dir": arm_work_dir,
-                "run_id": f"mi-onestep-{label}-{'-'.join(work_dir.parts[-2:])}",
-                "seed": seed,
-            }
-            future = worker_pool.submit(_run_one_in_worker, payload)
-            futures[future] = (bg_idx, label)
+    futures: dict[Future, int] = {}
+    for bg_idx, ((bg_seqs, bg_ys), work_dir, seed) in enumerate(zip(background_seqs_ys, work_dirs, seeds)):
+        payload = {
+            "cfg": cfg,
+            "task_idx": task_idx,
+            "pool_seqs": bg_seqs + [candidate.seq],
+            "pool_ys": bg_ys + [candidate.y],
+            "work_dir": work_dir,
+            "run_id": f"mi-onestep-{'-'.join(work_dir.parts[-2:])}",
+            "seed": seed,
+        }
+        futures[worker_pool.submit(_run_one_in_worker, payload)] = bg_idx
 
-    results: dict[tuple[int, str], float] = {}
+    results: list[float | None] = [None] * len(backgrounds)
     for future in as_completed(futures):
-        bg_idx, label = futures[future]
+        bg_idx = futures[future]
         ok, value = future.result()
         if not ok:
-            raise RuntimeError(f"one-step BO call failed (task {task_idx}, bg {bg_idx}, arm {label}): {value}")
-        results[(bg_idx, label)] = value
-
-    return [results[(bg_idx, "i")] - results[(bg_idx, "j")] for bg_idx in range(len(backgrounds))]
+            raise RuntimeError(f"one-step BO call failed (task {task_idx}, bg {bg_idx}, candidate {candidate.seq!r}): {value}")
+        results[bg_idx] = value
+    return results
 
 
 def zero_step_utility(background: list[EligibleCandidate], candidate: EligibleCandidate) -> float:
     """The zero-step ablation (experiments.tex sec:ablations): the pool's
-    own best already-known value, no BO round, no additional oracle cost."""
+    own best already-known value, no BO round, zero additional oracle cost."""
     return max([c.y for c in background] + [candidate.y])

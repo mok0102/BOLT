@@ -102,22 +102,27 @@ class ExperimentConfig:
     # below (unlike m, K's semantics genuinely differ between pairing
     # modes -- see mi_target_pairs_per_task's docstring).
     orpt_pair_source: str = "objective_ranked"
-    mi_num_backgrounds: int = 8  # M, shared backgrounds sampled per intervention pair
+    mi_num_backgrounds: int = 8  # M, shared backgrounds sampled once per task and reused across every candidate evaluated for it
     mi_tau_q: float = 1.0  # reference-aligned distribution q_t's softmax temperature
     mi_z_min: float = 1.96  # SNR reliability threshold a pair's Delta_1 must clear
     mi_delta_t: float = 0.0  # min |Delta_1| (numerical tolerance only, not a tunable effect-size floor)
-    # matched_intervention builds pairs via a target/max-attempts loop, not a
-    # fixed proposal count: orpt_pairs_per_task (objective_ranked's field)
+    # matched_intervention builds pairs via a target/max-candidates loop, not
+    # a fixed proposal count: orpt_pairs_per_task (objective_ranked's field)
     # is a *guaranteed* final pair count for that pairing mode, but for
     # matched_intervention the reliability filter can reject any given
-    # candidate, so reusing the same field would silently mean "up to this
+    # comparison, so reusing the same field would silently mean "up to this
     # many pairs, maybe fewer, maybe zero" -- not interpretable from the
     # config alone. These two fields keep the semantics honest: keep
-    # proposing and testing new candidate pairs until either
+    # evaluating new candidates (cached against the same mi_num_backgrounds
+    # shared backgrounds, memos/suggestion.txt's design -- every newly
+    # evaluated candidate is compared against every previously evaluated one
+    # for free, no fresh evaluation per comparison) until either
     # mi_target_pairs_per_task reliable pairs are found, or
-    # mi_max_pair_attempts_per_task candidates have been tried.
+    # mi_max_candidates_per_task candidates have been evaluated. Each
+    # candidate costs exactly mi_num_backgrounds real-BO calls (not
+    # 2x mi_num_backgrounds -- there's no per-pair "arm" cost anymore).
     mi_target_pairs_per_task: int = 5
-    mi_max_pair_attempts_per_task: int = 20
+    mi_max_candidates_per_task: int = 20
     # 1 (default): the paper's actual method -- one real BO acquisition
     # round per matched pool, real oracle calls during pair construction.
     # 0: the zero-step ablation (paper/experiments.tex sec:ablations) --
@@ -126,8 +131,8 @@ class ExperimentConfig:
     mi_bo_steps: int = 1
     # CUDA device ids to round-robin across for concurrent one-step BO
     # calls during matched_intervention pair construction (mi_orpt/
-    # one_step_evaluator.py). Each of the M backgrounds x 2 arms per
-    # candidate pair is independent (fully separate LOLBO subprocesses),
+    # one_step_evaluator.py). Each of a candidate's M background
+    # evaluations is independent (fully separate LOLBO subprocesses),
     # so this cuts wall-clock cost by up to len(mi_parallel_gpus)x on a
     # multi-GPU machine. None (default): fully serial, one call at a time
     # on cuda_visible_devices -- today's behavior, unchanged. Independent

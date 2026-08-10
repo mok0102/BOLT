@@ -44,7 +44,7 @@ fa_orpt_lambda_inf: 1.0   # dpo_ii_penalty only
 # objective_ranked, the raw-score pairing above). Set orpt_pair_source:
 # matched_intervention to label pairs via a real one-step BO evaluation
 # instead; pool size m reuses init_size above, but pair count is its own
-# mi_target_pairs_per_task/mi_max_pair_attempts_per_task fields rather than
+# mi_target_pairs_per_task/mi_max_candidates_per_task fields rather than
 # orpt_pairs_per_task -- unlike objective_ranked's sample_pairs() (which
 # always reaches exactly orpt_pairs_per_task pairs), matched_intervention's
 # reliability filter can reject any given candidate, so a fixed proposal
@@ -56,5 +56,5 @@ mi_tau_q: 1.0              # reference-aligned distribution temperature -- match
 mi_z_min: 1.96             # SNR reliability threshold -- matched_intervention only
 mi_delta_t: 0.0            # min |Delta_1|, numerical tolerance only -- matched_intervention only
 mi_target_pairs_per_task: 5      # stop once this many reliable pairs are found for a task -- matched_intervention only
-mi_max_pair_attempts_per_task: 20  # give up after this many candidate pairs tried, even short of target -- matched_intervention only
+mi_max_candidates_per_task: 20  # give up after evaluating this many candidates, even short of target -- matched_intervention only
 mi_bo_steps: 1              # 1 = actual one-step BO (real oracle calls); 0 = zero-step ablation -- matched_intervention only

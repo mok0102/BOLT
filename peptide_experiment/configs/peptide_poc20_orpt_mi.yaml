@@ -21,7 +21,7 @@
 #   overhead) before committing to this full schedule -- a real ~2.75-day
 #   multi-day run at current target/cap (555 cumulative task-instances
 #   across all 11 milestones; recompute if target/cap/z_min change).
-# - mi_target_pairs_per_task=10 / mi_max_pair_attempts_per_task=60: with
+# - mi_target_pairs_per_task=10 / mi_max_candidates_per_task=60: with
 #   the warm-worker pool (mi_orpt/warm_pool.py) + 8-GPU mi_parallel_gpus,
 #   measured real cost per candidate pair is ~6s (down from ~14-15s/call
 #   * 16 calls/pair serially, pre-warm-pool -- see session notes/plan
@@ -50,8 +50,8 @@
 # construction never runs concurrently with those steps, so the two
 # don't need to agree or avoid overlapping).
 #
-# mi_parallel_gpus: real-BO calls for a pair's M backgrounds (x2 arms) are
-# fully independent, dispatched across a persistent warm-worker pool
+# mi_parallel_gpus: a candidate's M background evaluations are fully
+# independent, dispatched across a persistent warm-worker pool
 # (mi_orpt/warm_pool.py) instead of one ephemeral subprocess per call --
 # confirmed via real-GPU timing this session (~15s cold first item per
 # worker, ~2.4s/item once warm). Using all 8 GPUs since pair construction
@@ -88,5 +88,5 @@ mi_tau_q: 1.0
 mi_z_min: 1.0
 mi_delta_t: 0.0
 mi_target_pairs_per_task: 10
-mi_max_pair_attempts_per_task: 60
+mi_max_candidates_per_task: 60
 mi_bo_steps: 1

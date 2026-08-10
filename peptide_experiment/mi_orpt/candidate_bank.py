@@ -45,11 +45,15 @@ def build_eligible_bank(trajectory_csv: Path, reference_sequence: str, similarit
     return bank
 
 
-def min_bank_size_needed(m: int) -> int:
-    """A task needs at least m+1 eligible candidates to support one matched
-    intervention of pool size m: 2 intervention candidates plus m-1 shared
-    background candidates, all drawn from and excluded out of the same
-    eligible set (appendix.tex app:candidate-banks: "Tasks with fewer than
-    m+1 eligible unique candidates ... are omitted from pair
-    construction")."""
-    return m + 1
+def min_bank_size_needed(m: int, num_reserved: int = 2) -> int:
+    """A task needs at least (m-1)+num_reserved eligible candidates: the
+    m-1 shared-background candidates plus num_reserved intervention
+    candidates, all drawn from and excluded out of the same eligible set
+    (appendix.tex app:candidate-banks: "Tasks with fewer than m+1 eligible
+    unique candidates ... are omitted from pair construction").
+    num_reserved=2 (default) matches that original m+1 rule -- the two
+    candidates of a single matched pair. mi_orpt/pair_construction.py's
+    cache-and-reuse design instead reserves up to mi_max_candidates_per_task
+    candidates upfront (so every reserved candidate can be safely excluded
+    from every shared background at once), passing that as num_reserved."""
+    return (m - 1) + num_reserved
