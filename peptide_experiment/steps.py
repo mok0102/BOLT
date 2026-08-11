@@ -279,7 +279,7 @@ def run_bo(
 
     seed is an additive, opt-in knob (default None reproduces the exact
     subprocess CLI this function has always built): peptide_experiment/
-    mi_orpt/one_step_evaluator.py::run_candidate_one_step needs a matched
+    mi_orpt/one_step_evaluator.py::run_candidates_one_step needs a matched
     random seed shared across every candidate evaluated against the same
     background (paper/method.tex sec:one-step-pool-evaluation).
     Forwards directly to Optimize's own (already-existing, otherwise-unused)
