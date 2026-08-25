@@ -37,7 +37,17 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from plot_common import MUTED_TEXT, arm_colors, filter_arms, resolve_out_dir, sorted_arms, style_axis
+from plot_common import (
+    MUTED_TEXT,
+    arm_colors,
+    arm_legend_handles,
+    filter_arms,
+    is_milestone_independent,
+    plot_arm_line,
+    resolve_out_dir,
+    sorted_arms,
+    style_axis,
+)
 
 TASK_SET_LABEL = {"heldout": "held-out peptides", "trainset": "trained peptides"}
 
@@ -61,15 +71,7 @@ def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, target: int, bo_c
     for arm in arms:
         arm_sub = sub[sub["arm"] == arm]
         stats = arm_sub.groupby("milestone")["best_mic"].agg(["mean", "std"]).reindex(milestones)
-        ax.plot(milestones, stats["mean"], color=colors[arm], linewidth=2, marker="o", markersize=8, label=arm)
-        ax.fill_between(
-            milestones,
-            stats["mean"] - stats["std"].fillna(0),
-            stats["mean"] + stats["std"].fillna(0),
-            color=colors[arm],
-            alpha=0.15,
-            linewidth=0,
-        )
+        plot_arm_line(ax, milestones, stats["mean"], colors[arm], stds=stats["std"], label=arm)
     ax.set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
     ax.set_ylabel("best MIC found (lower = more potent)", color=MUTED_TEXT)
     ax.set_xticks(milestones)
@@ -99,6 +101,8 @@ def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path, bo_calls: int) ->
     n_cols = 3
     n_rows = -(-len(targets) // n_cols)  # ceil div
 
+    flat_arms = {arm for arm in arms if is_milestone_independent(sub[sub["arm"] == arm])}
+
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 3.5 * n_rows), sharey=True)
     axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
 
@@ -107,7 +111,7 @@ def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path, bo_calls: int) ->
         for arm in arms:
             arm_panel = panel[panel["arm"] == arm]
             means = arm_panel.groupby("milestone")["best_mic"].mean().reindex(milestones)
-            ax.plot(milestones, means, color=colors[arm], linewidth=2, marker="o", markersize=5)
+            plot_arm_line(ax, milestones, means, colors[arm], marker_size=5)
         ax.set_title(f"target={target}", color="#0b0b0b")
         ax.set_xticks(milestones)
         style_axis(ax)
@@ -121,7 +125,7 @@ def plot_fig2(df: pd.DataFrame, task_set: str, out_path: Path, bo_calls: int) ->
         if rows_in_col:
             axes[max(rows_in_col) * n_cols + col].set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
 
-    handles = [plt.Line2D([0], [0], color=colors[arm], linewidth=2.5) for arm in arms]
+    handles = arm_legend_handles(arms, colors, flat_arms)
     fig.legend(handles, arms, loc="lower center", ncol=len(arms), frameon=False, bbox_to_anchor=(0.5, -0.02))
     fig.suptitle(
         f"BO objective: target-pool-size sensitivity check ({TASK_SET_LABEL[task_set]}, bo_calls={bo_calls})",
@@ -150,15 +154,7 @@ def plot_fig3(df: pd.DataFrame, task_set: str, out_path: Path, target: int) -> N
     for arm in arms:
         arm_sub = sub[sub["arm"] == arm]
         stats = arm_sub.groupby("milestone")["rejection_rate"].agg(["mean", "std"]).reindex(milestones)
-        ax.plot(milestones, stats["mean"], color=colors[arm], linewidth=2, marker="o", markersize=8, label=arm)
-        ax.fill_between(
-            milestones,
-            stats["mean"] - stats["std"].fillna(0),
-            stats["mean"] + stats["std"].fillna(0),
-            color=colors[arm],
-            alpha=0.15,
-            linewidth=0,
-        )
+        plot_arm_line(ax, milestones, stats["mean"], colors[arm], stds=stats["std"], label=arm)
     ax.set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
     ax.set_ylabel("rejection rate (1 - target / raw draws)", color=MUTED_TEXT)
     ax.set_xticks(milestones)
@@ -192,10 +188,7 @@ def plot_fig4_coverage(df: pd.DataFrame, task_set: str, out_path: Path, target: 
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
     for arm in arms:
         arm_sub = sub[sub["arm"] == arm].set_index("milestone").reindex(milestones)
-        ax.plot(
-            milestones, arm_sub["coverage_rate"],
-            color=colors[arm], linewidth=2, marker="o", markersize=8, label=arm,
-        )
+        plot_arm_line(ax, milestones, arm_sub["coverage_rate"], colors[arm], label=arm)
     ax.set_xlabel("#tasks trained (milestone)", color=MUTED_TEXT)
     ax.set_ylabel("coverage rate (fraction of tasks reaching target pool size)", color=MUTED_TEXT)
     ax.set_ylim(-0.05, 1.05)

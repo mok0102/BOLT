@@ -1,0 +1,248 @@
+# 5-arm PoC comparison: BOLT (SFT-only), MTBO (shared-surrogate, DKT/FSBO-style --
+# offline-trained GP surrogate, no LLM proposal policy), OptFormer (LLM-based BO
+# baseline), ORPT-MI (matched-intervention DPO), and ORPT-MI-BPO (matched-intervention
+# + BPO loss instead of stock DPOLoss). Each arm's own experiment_id/run_dir:
+#   BOLT/MTBO/OptFormer -> runs/peptide_poc20_bolt (trained together under build_orpt/
+#     build_mtbo/build_optformer flags -- see peptide_experiment/config.py)
+#   ORPT-MI             -> runs/peptide_poc20_orpt_mi
+#   ORPT-MI-BPO         -> runs/peptide_poc20_orpt_mi_bpo_v2 (use_pretrained_vae: false,
+#     mi_candidate_temperature: 1.0 -- see peptide_poc20_orpt_mi_bpo.yaml)
+#
+# checkpoint_dir is only read by generate_raw_proposals.py (step 0), which skips any
+# entry with no checkpoint_dir (assuming raw proposals already exist). Omitted for
+# BOLT/ORPT-MI below since their raw proposals already exist under
+# <run_dir>/eval_raw/heldout/<arm>-<milestone>/, and for MTBO always (it has no LLM
+# checkpoint to sample from at all -- fixed_target_rejection_bo.py/
+# fixed_budget_rejection_bo.py read its surrogate_state_dict.pt directly, deriving the
+# path from run_dir+milestone, never from checkpoint_dir). Do not add a checkpoint_dir
+# for MTBO entries -- generate_raw_proposals.py has no MTBO special-case, so a non-null
+# checkpoint_dir makes it try (and fail) to LLM-sample from the surrogate's state dict.
+# Re-running step 0 over the whole manifest will skip BOLT/ORPT-MI/MTBO and only
+# generate the genuinely missing ones (OptFormer, ORPT-MI-BPO).
+models:
+  - arm: BOLT
+    milestone: 5
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 10
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 20
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 30
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 40
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 50
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 60
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 70
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 80
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 90
+    run_dir: runs/peptide_poc20_bolt
+  - arm: BOLT
+    milestone: 100
+    run_dir: runs/peptide_poc20_bolt
+
+  - arm: MTBO
+    milestone: 5
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 10
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 20
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 30
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 40
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 50
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 60
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 70
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 80
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 90
+    run_dir: runs/peptide_poc20_bolt
+  - arm: MTBO
+    milestone: 100
+    run_dir: runs/peptide_poc20_bolt
+
+  - arm: OptFormer
+    milestone: 5
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-5/epoch_0
+  - arm: OptFormer
+    milestone: 10
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-10/epoch_0
+  - arm: OptFormer
+    milestone: 20
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-20/epoch_0
+  - arm: OptFormer
+    milestone: 30
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-30/epoch_0
+  - arm: OptFormer
+    milestone: 40
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-40/epoch_0
+  - arm: OptFormer
+    milestone: 50
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-50/epoch_0
+  - arm: OptFormer
+    milestone: 60
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-60/epoch_0
+  - arm: OptFormer
+    milestone: 70
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-70/epoch_0
+  - arm: OptFormer
+    milestone: 80
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-80/epoch_0
+  - arm: OptFormer
+    milestone: 90
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-90/epoch_0
+  - arm: OptFormer
+    milestone: 100
+    run_dir: runs/peptide_poc20_bolt
+    checkpoint_dir: runs/peptide_poc20_bolt/checkpoints/OptFormer-100/epoch_0
+
+  - arm: ORPT-MI
+    milestone: 5
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 10
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 20
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 30
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 40
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 50
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 60
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 70
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 80
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 90
+    run_dir: runs/peptide_poc20_orpt_mi
+  - arm: ORPT-MI
+    milestone: 100
+    run_dir: runs/peptide_poc20_orpt_mi
+
+  - arm: ORPT-MI-BPO
+    milestone: 5
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-5/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 10
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-10/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 20
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-20/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 30
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-30/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 40
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-40/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 50
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-50/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 60
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-60/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 70
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-70/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 80
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-80/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 90
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-90/epoch_0
+  - arm: ORPT-MI-BPO
+    milestone: 100
+    run_dir: runs/peptide_poc20_orpt_mi_bpo_v2
+    checkpoint_dir: runs/peptide_poc20_orpt_mi_bpo_v2/checkpoints/ORPT-100/epoch_0
+
+  # GP-expert-transfer (POGPE/SGPE, Schilling et al. 2016): milestone here is
+  # overloaded to mean expert count N (5/10/20), not a training-progress
+  # checkpoint -- see peptide_experiment/gp_expert_transfer.py and
+  # fixed_target_rejection_bo.py's POGPE/SGPE branch. No checkpoint_dir (no
+  # LLM policy to sample raw proposals from; these arms self-seed via
+  # build_mutation_init like MTBO).
+  - arm: POGPE
+    milestone: 5
+    run_dir: runs/peptide_poc20_bolt
+  - arm: POGPE
+    milestone: 10
+    run_dir: runs/peptide_poc20_bolt
+  - arm: POGPE
+    milestone: 20
+    run_dir: runs/peptide_poc20_bolt
+  - arm: SGPE
+    milestone: 5
+    run_dir: runs/peptide_poc20_bolt
+  - arm: SGPE
+    milestone: 10
+    run_dir: runs/peptide_poc20_bolt
+  - arm: SGPE
+    milestone: 20
+    run_dir: runs/peptide_poc20_bolt
+
+  # LLAMBO (Liu et al. 2024): never fine-tuned (zero-shot, in-context only --
+  # see peptide_experiment/llambo_optimization.py), so milestone is an
+  # arbitrary placeholder, not a real training-progress checkpoint -- appears
+  # as a single point per target_pool_size panel, not a line across
+  # milestones. No checkpoint_dir (checkpoint_path=None -> the same
+  # unmodified base_checkpoint_dir every other arm fine-tunes from).
+  - arm: LLAMBO
+    milestone: 0
+    run_dir: runs/peptide_poc20_bolt

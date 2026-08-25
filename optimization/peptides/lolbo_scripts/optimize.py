@@ -104,6 +104,9 @@ class Optimize:
         recenter_only=False,
         log_table_freq=10_000,
         save_vae_ckpt=False,
+        pretrained_surrogate_path: str | None = None,
+        pretrained_surrogate_num_inducing: int | None = None,
+        poe_manifest_path: str | None = None,
     ):
         # signal.signal(signal.SIGINT, self.handler)
         # add all local args to method args dict to be logged by wandb
@@ -190,6 +193,9 @@ class Optimize:
             bsz=bsz,
             acq_func=acq_func,
             verbose=verbose,
+            pretrained_surrogate_path=pretrained_surrogate_path,
+            pretrained_surrogate_num_inducing=pretrained_surrogate_num_inducing,
+            poe_manifest_path=poe_manifest_path,
         )
 
     def initialize_objective(self):

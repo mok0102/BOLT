@@ -6,6 +6,7 @@ exact same primitives, just pointed at different output directories.
 
 from __future__ import annotations
 
+import json
 import os
 import random
 import shutil
@@ -187,11 +188,17 @@ def sample_and_build_init(
     model_path: Path | str,
     task_idx: int,
     work_dir: Path,
+    temperature: float | None = None,
 ) -> tuple[Path, Path]:
     """Sample candidates for peptide task `task_idx` from `model_path`
     (a checkpoint dir, or the raw base model for task 0 / pre-milestone
     tasks), score them with the APEX oracle, and return (init_path,
     scores_path) ready to hand to the BO entry point.
+
+    temperature: None (default) leaves sampling_transformers.py at its own
+    default (1) -- every existing call site's behavior is unchanged. A float
+    value overrides it, e.g. for mi_orpt's dedicated candidate-pool sampling
+    (cfg.mi_candidate_temperature) without affecting any other caller.
     """
     work_dir.mkdir(parents=True, exist_ok=True)
     init_path = work_dir / f"task_{task_idx:04d}_init.txt"
@@ -209,24 +216,23 @@ def sample_and_build_init(
     for attempt in range(1, max_attempts + 1):
         samples_per_peptide = min(cfg.init_size * pool_multiplier, MAX_SAMPLES_PER_CALL)
         attempt_jsonl = work_dir / f"task_{task_idx:04d}_sampled_attempt{attempt}.jsonl"
-        _run(
-            [
-                sys.executable,
-                "sampling_transformers.py",
-                "--model-path",
-                model_path,
-                "--start-index",
-                task_idx,
-                "--num-peptides",
-                1,
-                "--samples-per-peptide",
-                samples_per_peptide,
-                "--output-file",
-                attempt_jsonl,
-            ],
-            cwd=fine_tuning_dir,
-            cfg=cfg,
-        )
+        cmd = [
+            sys.executable,
+            "sampling_transformers.py",
+            "--model-path",
+            model_path,
+            "--start-index",
+            task_idx,
+            "--num-peptides",
+            1,
+            "--samples-per-peptide",
+            samples_per_peptide,
+            "--output-file",
+            attempt_jsonl,
+        ]
+        if temperature is not None:
+            cmd += ["--temperature", temperature]
+        _run(cmd, cwd=fine_tuning_dir, cfg=cfg)
         sample_jsonls.append(attempt_jsonl)
         _run(
             [
@@ -272,6 +278,10 @@ def run_bo(
     scores_path: Path | None = None,
     stbo: bool = False,
     seed: int | None = None,
+    pretrained_surrogate_path: Path | None = None,
+    surrogate_type: str | None = None,
+    poe_manifest_path: Path | None = None,
+    update_e2e: bool | None = None,
 ) -> Path:
     """Run one single-task BO trial (BOLT arm if init_path/scores_path are
     given, STBO arm if stbo=True) and return the path to its collected-data
@@ -283,10 +293,25 @@ def run_bo(
     random seed shared across every candidate evaluated against the same
     background (paper/method.tex sec:one-step-pool-evaluation).
     Forwards directly to Optimize's own (already-existing, otherwise-unused)
-    `--seed` constructor kwarg. Matched VAE initialization between the two
-    arms needs no extra plumbing here: info_transformer_vae_optimization.py's
-    own `path_to_vae_statedict` default already points both arms at the same
-    fixed pretrained checkpoint unless overridden.
+    `--seed` constructor kwarg. VAE pretrained-checkpoint loading is
+    controlled by cfg.use_pretrained_vae (see config.py).
+
+    pretrained_surrogate_path: None (default, unchanged): LOLBOState fits a
+    fresh GP surrogate from scratch, same as ever. A path (shared-surrogate
+    MTBO baseline, mtbo.py::train_mtbo_surrogate's output): forwarded to
+    Optimize's pretrained_surrogate_path constructor kwarg, along with the
+    exact inducing-point count recorded in that checkpoint's sidecar
+    surrogate_meta.json (lolbo.py::LOLBOState needs the count to construct a
+    matching-shape model before load_state_dict).
+
+    surrogate_type/poe_manifest_path/update_e2e: None (default, unchanged):
+    all three omitted from the CLI, Optimize's own defaults used ("gp_dkl",
+    no manifest, update_e2e=True) -- every existing call site unaffected.
+    GP-expert-transfer baseline (gp_expert_transfer.py): pass
+    surrogate_type="gp_poe" + poe_manifest_path=<a {"experts": [...]} JSON
+    manifest> + update_e2e=False (required whenever surrogate_type="gp_poe"
+    -- a frozen K-expert ensemble has no single model to fine-tune
+    end-to-end; see lolbo.py::LOLBOState.update_models_e2e's guard).
     """
     work_dir.mkdir(parents=True, exist_ok=True)
     dest_csv = work_dir / f"task_{task_idx:04d}.csv"
@@ -339,6 +364,23 @@ def run_bo(
         ]
     if seed is not None:
         cmd += ["--seed", seed]
+    if not cfg.use_pretrained_vae:
+        cmd += ["--path_to_vae_statedict", ""]
+    if pretrained_surrogate_path is not None:
+        meta_path = Path(pretrained_surrogate_path).with_name("surrogate_meta.json")
+        meta = json.loads(meta_path.read_text())
+        cmd += [
+            "--pretrained_surrogate_path",
+            str(pretrained_surrogate_path),
+            "--pretrained_surrogate_num_inducing",
+            meta["num_inducing_points"],
+        ]
+    if surrogate_type is not None:
+        cmd += ["--surrogate_type", surrogate_type]
+    if poe_manifest_path is not None:
+        cmd += ["--poe_manifest_path", str(poe_manifest_path)]
+    if update_e2e is not None:
+        cmd += ["--update_e2e", update_e2e]
     cmd.append("run_lolbo")
 
     _run(cmd, cwd=lolbo_scripts_dir, cfg=cfg)

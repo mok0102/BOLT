@@ -24,7 +24,10 @@ import fire
 from .aggregate import _arms as _all_arms
 from .aggregate import build_bo_scaling_curve, build_no_bo_milestone_eval
 from .config import load_config
+from .gp_expert_transfer import train_gp_expert_pool
 from .heldout_eval import run_heldout_eval, run_init_only_eval
+from .mtbo import train_mtbo_surrogate
+from .optformer import train_optformer as _train_optformer
 from .trajectory_chain import run_trajectory_chain
 
 
@@ -32,6 +35,21 @@ class CLI:
     def trajectory_chain(self, config: str) -> None:
         cfg = load_config(config)
         run_trajectory_chain(cfg)
+
+    def train_mtbo(self, config: str) -> None:
+        cfg = load_config(config)
+        for m in cfg.milestones:
+            train_mtbo_surrogate(cfg, m)
+
+    def train_optformer(self, config: str) -> None:
+        cfg = load_config(config)
+        for m in cfg.milestones:
+            _train_optformer(cfg, m)
+
+    def train_gp_expert_transfer(self, config: str) -> None:
+        cfg = load_config(config)
+        for n in cfg.gp_expert_counts:
+            train_gp_expert_pool(cfg, n)
 
     def heldout_eval(self, config: str, arm: str, tasks: str) -> None:
         assert tasks in ("heldout20", "heldout100"), tasks

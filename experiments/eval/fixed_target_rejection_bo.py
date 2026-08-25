@@ -27,10 +27,13 @@ Usage (run from the BOLT repo root):
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import json
 import subprocess
 from pathlib import Path
 
 from common import (
+    REFERENCE_SEQUENCE,
     ModelSpec,
     bo_k_checkpoints,
     build_bo_pool,
@@ -43,7 +46,10 @@ from common import (
 
 from peptide_experiment.aggregate import _best_mic_at_k
 from peptide_experiment.config import ExperimentConfig, load_config
-from peptide_experiment.steps import run_bo
+from peptide_experiment.gp_expert_transfer import build_sgpe_manifest, fit_sgpe_target_expert
+from peptide_experiment.llambo_optimization import run_llambo_bo
+from peptide_experiment.optformer_optimization import run_optformer_bo
+from peptide_experiment.steps import build_mutation_init, run_bo
 
 DEFAULT_TARGET_POOL_SIZES = [10, 20, 50]
 
@@ -55,6 +61,7 @@ COVERAGE_FIELDS = [
 PER_TASK_FIELDS = [
     "arm", "milestone", "task_set", "task_idx", "target_pool_size",
     "draws_used", "rejection_rate", "best_feasible_incumbent", "bo_calls", "best_mic",
+    "llambo_terminated_early", "llambo_input_tokens_used",
 ]
 SUMMARY_FIELDS = ["arm", "milestone", "task_set", "target_pool_size", "bo_calls", "n_tasks_ran_bo", "mean_best_mic"]
 
@@ -71,16 +78,90 @@ def run_for_spec_task_set_target(
     feasible_incumbents: list[float] = []
     bo_rows: list[dict] = []
     for task_idx in task_ids:
-        built = build_bo_pool(cfg, task_idx, raw_dir, work_dir, target=target)
-        if built is None:
-            continue
-        init_path, scores_path, pool_size, draws_used = built
+        if spec.arm == "MTBO":
+            # No LLM, so no rejection sampling: seeds with exactly `target`
+            # guaranteed-feasible random mutations (same primitive STBO
+            # uses) and runs real BO with the pretrained shared surrogate --
+            # a genuinely matched init size + oracle budget vs. every other
+            # arm, not a rejection-driven comparison. Checkpoint resolved
+            # from spec.run_dir (not cfg's own run_dir), since one manifest
+            # can mix arms from different run_dirs.
+            run_cfg = dataclasses.replace(cfg, use_pretrained_vae=True, init_size=target)
+            init_path, scores_path = build_mutation_init(run_cfg, task_idx, work_dir)
+            pool_size, draws_used = target, target
+        elif spec.arm == "OptFormer":
+            # Same idea: its own history-conditioned propose/score loop
+            # self-seeds via build_mutation_init (inside run_optformer_bo),
+            # genuinely re-run per target -- no reuse across target_pool_size
+            # panels.
+            run_cfg = dataclasses.replace(cfg, init_size=target)
+            pool_size, draws_used = target, target
+        elif spec.arm in ("POGPE", "SGPE"):
+            # No LLM, no rejection sampling (same reasoning as MTBO): seeds
+            # with exactly `target` guaranteed-feasible random mutations.
+            # spec.milestone is reused to mean expert count N here (a
+            # deliberate, minor overload of the shared ModelSpec.milestone
+            # field -- N maps directly onto our milestone axis per the
+            # paper's own framing, "the first 5/10/20 trajectories were used
+            # to train the POGPE/SGPE expert models", not crossed against
+            # cfg.milestones).
+            run_cfg = dataclasses.replace(cfg, use_pretrained_vae=True, init_size=target)
+            init_path, scores_path = build_mutation_init(run_cfg, task_idx, work_dir)
+            pool_size, draws_used = target, target
+        elif spec.arm == "LLAMBO":
+            # No LLM checkpoint per-milestone (LLAMBO is never fine-tuned --
+            # always the same base, unmodified checkpoint -- spec.milestone
+            # is unused/arbitrary for this arm; see the manifest's own
+            # comment). Self-seeds via build_mutation_init inside
+            # run_llambo_bo, same as OptFormer.
+            run_cfg = dataclasses.replace(cfg, init_size=target)
+            pool_size, draws_used = target, target
+        else:
+            built = build_bo_pool(cfg, task_idx, raw_dir, work_dir, target=target)
+            if built is None:
+                continue
+            init_path, scores_path, pool_size, draws_used = built
+            cfg.init_size = pool_size  # run_bo reads cfg.init_size; must match target exactly
+
         rejection_rate = 1 - pool_size / draws_used if draws_used else None
         if rejection_rate is not None:
             rejection_rates.append(rejection_rate)
-        cfg.init_size = pool_size  # run_bo reads cfg.init_size; must match target exactly
+
         try:
-            csv_path = run_bo(cfg, task_idx, work_dir, run_id=run_id, init_path=init_path, scores_path=scores_path)
+            if spec.arm == "MTBO":
+                surrogate_path = spec.run_dir / "checkpoints" / f"MTBO-{spec.milestone}" / "surrogate_state_dict.pt"
+                csv_path = run_bo(
+                    run_cfg, task_idx, work_dir, run_id=run_id, init_path=init_path,
+                    scores_path=scores_path, pretrained_surrogate_path=surrogate_path,
+                )
+            elif spec.arm == "OptFormer":
+                checkpoint_path = (
+                    spec.run_dir / "checkpoints" / f"OptFormer-{spec.milestone}" / f"epoch_{cfg.optformer_epochs - 1}"
+                )
+                csv_path = run_optformer_bo(
+                    run_cfg, task_idx, work_dir, run_id=run_id, milestone=spec.milestone,
+                    checkpoint_path=checkpoint_path,
+                )
+            elif spec.arm in ("POGPE", "SGPE"):
+                n_experts = spec.milestone
+                base_manifest_path = spec.run_dir / "checkpoints" / f"GPExperts-{n_experts}" / "poe_manifest.json"
+                if spec.arm == "SGPE":
+                    target_expert_dir = work_dir / f"sgpe_target_expert_task{task_idx:04d}"
+                    target_expert_ckpt = fit_sgpe_target_expert(
+                        run_cfg, task_idx, target_expert_dir, init_path, scores_path,
+                    )
+                    manifest_path = work_dir / f"sgpe_manifest_task{task_idx:04d}.json"
+                    build_sgpe_manifest(base_manifest_path, target_expert_ckpt, manifest_path)
+                else:
+                    manifest_path = base_manifest_path
+                csv_path = run_bo(
+                    run_cfg, task_idx, work_dir, run_id=run_id, init_path=init_path, scores_path=scores_path,
+                    surrogate_type="gp_poe", poe_manifest_path=manifest_path, update_e2e=False,
+                )
+            elif spec.arm == "LLAMBO":
+                csv_path = run_llambo_bo(run_cfg, task_idx, work_dir, run_id=run_id, checkpoint_path=None)
+            else:
+                csv_path = run_bo(cfg, task_idx, work_dir, run_id=run_id, init_path=init_path, scores_path=scores_path)
         except (subprocess.CalledProcessError, RuntimeError) as e:
             print(f"[{run_id} task {task_idx}] FAILED, continuing with rest of sweep: {e}")
             continue
@@ -88,13 +169,25 @@ def run_for_spec_task_set_target(
         best_feasible_incumbent = read_best_feasible_incumbent(work_dir, task_idx)
         if best_feasible_incumbent is not None:
             feasible_incumbents.append(best_feasible_incumbent)
+        llambo_meta = None
+        if spec.arm == "LLAMBO":
+            llambo_meta_path = work_dir / f"task_{task_idx:04d}_llambo_meta.json"
+            if llambo_meta_path.exists():
+                llambo_meta = json.loads(llambo_meta_path.read_text())
         for bo_calls in bo_k_checkpoints(cfg):
-            bo_rows.append({
+            row = {
                 "arm": spec.arm, "milestone": spec.milestone, "task_set": task_set, "task_idx": task_idx,
                 "target_pool_size": target, "draws_used": draws_used, "rejection_rate": rejection_rate,
                 "best_feasible_incumbent": best_feasible_incumbent,
-                "bo_calls": bo_calls, "best_mic": _best_mic_at_k(csv_path, pool_size, bo_calls),
-            })
+                "bo_calls": bo_calls, "best_mic": _best_mic_at_k(
+                    csv_path, pool_size, bo_calls,
+                    reference_sequence=REFERENCE_SEQUENCE[task_idx], similarity_threshold=cfg.similarity_threshold,
+                ),
+            }
+            if llambo_meta is not None:
+                row["llambo_terminated_early"] = llambo_meta["terminated_reason"] != "oracle_budget_reached"
+                row["llambo_input_tokens_used"] = llambo_meta["total_input_tokens"]
+            bo_rows.append(row)
 
     coverage_row = {
         "arm": spec.arm, "milestone": spec.milestone, "task_set": task_set, "target_pool_size": target,
@@ -117,7 +210,11 @@ def compute_rows(
     coverage_rows, bo_rows = [], []
     for spec in specs:
         for task_set in task_set_names:
-            if not raw_dir_for(spec, task_set).exists():
+            # MTBO/OptFormer/POGPE/SGPE/LLAMBO never go through generate_raw_proposals.py (no
+            # LLM raw-generation step, no rejection sampling) -- they self-seed a target-sized
+            # init pool directly inside run_for_spec_task_set_target(), so this
+            # raw-generation gate doesn't apply.
+            if spec.arm not in ("MTBO", "OptFormer", "POGPE", "SGPE", "LLAMBO") and not raw_dir_for(spec, task_set).exists():
                 print(f"[fixed_target_rejection_bo] {spec.arm}-{spec.milestone}/{task_set}: "
                       f"no raw generations, run generate_raw_proposals.py first, skipping")
                 continue

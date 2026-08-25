@@ -22,9 +22,11 @@ artifacts (confirmed via Appendix D.6, p.24):
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 
 from .config import ExperimentConfig
+from .optformer_optimization import run_optformer_bo
 from .steps import build_mutation_init, run_bo, sample_and_build_init
 
 
@@ -50,6 +52,29 @@ def run_heldout_eval(cfg: ExperimentConfig, arm: str, task_set: str) -> None:
         try:
             if arm == "STBO":
                 run_bo(cfg, task_idx, out_dir, run_id=run_id, stbo=True)
+            elif arm.startswith("MTBO-"):
+                milestone = int(arm.split("-", 1)[1])
+                init_path, scores_path = build_mutation_init(cfg, task_idx, out_dir)
+                run_cfg = dataclasses.replace(cfg, use_pretrained_vae=True)
+                run_bo(
+                    run_cfg,
+                    task_idx,
+                    out_dir,
+                    run_id=run_id,
+                    init_path=init_path,
+                    scores_path=scores_path,
+                    pretrained_surrogate_path=cfg.mtbo_checkpoint_dir(milestone),
+                )
+            elif arm.startswith("OptFormer-"):
+                milestone = int(arm.split("-", 1)[1])
+                run_optformer_bo(
+                    cfg,
+                    task_idx,
+                    out_dir,
+                    run_id=run_id,
+                    milestone=milestone,
+                    checkpoint_path=cfg.optformer_checkpoint_dir(milestone),
+                )
             else:
                 model_path = _checkpoint_for_arm(cfg, arm)
                 init_path, scores_path = sample_and_build_init(
@@ -85,7 +110,15 @@ def run_init_only_eval(cfg: ExperimentConfig, arm: str, task_set: str) -> None:
     n_ok, n_failed = 0, 0
     for task_idx in tasks:
         try:
-            if arm == "STBO":
+            if arm == "STBO" or arm.startswith("MTBO-") or arm.startswith("OptFormer-"):
+                # Neither MTBO (a different surrogate, not a different
+                # initializer) nor OptFormer (its checkpoint only drives
+                # subsequent proposals, conditioned on a growing trial
+                # history it doesn't have yet at init time) has a checkpoint
+                # that can zero-shot an init pool -- same random-mutation
+                # init as STBO, an expected, correct property, not a bug
+                # (see run_heldout_eval()'s branches for where each arm's
+                # real method actually shows up).
                 build_mutation_init(cfg, task_idx, out_dir)
             else:
                 model_path = _checkpoint_for_arm(cfg, arm)

@@ -22,15 +22,21 @@ oracle calls" is the running max of train_y over rows [0 : init_size + k].
 from __future__ import annotations
 
 import pandas as pd
+from Levenshtein import distance as edit_distance
 
 from .config import ExperimentConfig
+from apex_oracle.refseqs import REFERENCE_SEQUENCE  # noqa: E402 -- relies on config.py's sys.path insert
 
 
 def _arms(cfg: ExperimentConfig) -> list[str]:
     arms = [f"BOLT-{m}" for m in cfg.milestones]
     if cfg.build_orpt:
         arms += [f"ORPT-{m}" for m in cfg.milestones]
+    if cfg.build_mtbo:
+        arms += [f"MTBO-{m}" for m in cfg.milestones]
     arms.append("STBO")
+    if cfg.build_optformer:
+        arms += [f"OptFormer-{m}" for m in cfg.milestones]
     return arms
 
 
@@ -61,12 +67,44 @@ def _sum_score_across_tasks_init_only(
     return total, n_missing
 
 
-def _best_mic_at_k(csv_path, init_size: int, k: int) -> float | None:
+def _similarity(seq: str, reference: str) -> float:
+    """Same edit-distance-based formula as steps.py::_ensure_constraint_feasible
+    and experiments/eval/common.py::similarity()."""
+    length = len(reference)
+    return (length - edit_distance(str(seq), reference)) / length
+
+
+def _best_mic_at_k(
+    csv_path,
+    init_size: int,
+    k: int,
+    reference_sequence: str | None = None,
+    similarity_threshold: float | None = None,
+) -> float | None:
+    """Best (lowest) MIC among the first init_size+k logged rows.
+
+    reference_sequence/similarity_threshold (pass both together, or neither):
+    LOLBO's collected-data CSV logs every candidate it ever evaluates,
+    including ones that violate the similarity constraint. A raw max() over
+    train_y can therefore pick up a wildly out-of-distribution "candidate"
+    that the raw APEX oracle happens to score unrealistically well -- a real,
+    confirmed failure mode (an unrelated 22-residue sequence at
+    similarity=-0.5 was reported as an arm's best result for one task before
+    this fix). When given, restrict the max to feasible rows only; if none of
+    the first init_size+k rows are feasible, return None (treated as missing,
+    like any other gap -- never silently fall back to an infeasible "best").
+    """
     df = pd.read_csv(csv_path)
     row_idx = min(init_size + k, len(df))
     if row_idx <= 0 or df.empty:
         return None
-    best_y = df["train_y"].iloc[:row_idx].max()
+    window = df.iloc[:row_idx]
+    if reference_sequence is not None and similarity_threshold is not None:
+        feasible = window["train_x"].apply(lambda seq: _similarity(seq, reference_sequence) >= similarity_threshold)
+        window = window[feasible]
+        if window.empty:
+            return None
+    best_y = window["train_y"].max()
     return -best_y  # train_y = -MIC (maximized); MIC = -train_y, lower is better
 
 
@@ -81,7 +119,13 @@ def _sum_mic_across_tasks(
         if not csv_path.exists():
             n_missing += 1
             continue
-        mic = _best_mic_at_k(csv_path, cfg.init_size, k)
+        mic = _best_mic_at_k(
+            csv_path,
+            cfg.init_size,
+            k,
+            reference_sequence=REFERENCE_SEQUENCE[task_idx],
+            similarity_threshold=cfg.similarity_threshold,
+        )
         if mic is not None:
             total += mic
         else:

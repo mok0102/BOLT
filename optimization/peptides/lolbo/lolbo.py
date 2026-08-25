@@ -1,4 +1,6 @@
+import json
 import math
+from pathlib import Path
 
 import gpytorch
 import numpy as np
@@ -13,6 +15,7 @@ parent_dir = os.path.dirname(file_dir)
 sys.path.append(f"{parent_dir}")
 
 from lolbo.utils.bo_utils.gp_map_saas import MAPSaasGPModel
+from lolbo.utils.bo_utils.poe_gp import PoEGPModel
 from lolbo.utils.bo_utils.ppgpr import GPModelDKL
 from lolbo.utils.bo_utils.turbo import TurboState, generate_batch, update_state
 from lolbo.utils.utils import (
@@ -39,6 +42,9 @@ class LOLBOState:
         bsz=10,
         acq_func="ts",
         verbose=True,
+        pretrained_surrogate_path: str | None = None,
+        pretrained_surrogate_num_inducing: int | None = None,
+        poe_manifest_path: str | None = None,
     ):
         self.objective = objective  # objective with vae for particular task
         self.train_x = train_x  # initial train x data
@@ -56,6 +62,24 @@ class LOLBOState:
         self.acq_func = acq_func  # acquisition function (Expected Improvement (ei) or Thompson Sampling (ts))
         self.verbose = verbose
         self.surrogate_type = surrogate_type
+        # None (default): unchanged behavior, a fresh GPModelDKL is fit from
+        # scratch on this task's own train_z, same as ever. A path (shared-
+        # surrogate MTBO baseline): initialize_surrogate_model() below loads
+        # this state dict into the objective model instead -- the inducing-
+        # point count is baked into its shapes, so
+        # pretrained_surrogate_num_inducing must be given alongside it and
+        # must match exactly what the checkpoint was trained with.
+        self.pretrained_surrogate_path = pretrained_surrogate_path
+        self.pretrained_surrogate_num_inducing = pretrained_surrogate_num_inducing
+        # GP-expert-transfer baseline (POGPE/SGPE): a path to a JSON manifest
+        # of {"experts": [{"path": ..., "weight": ...}, ...]} -- an ensemble
+        # of K frozen pretrained experts, combined via product-of-experts
+        # (lolbo/utils/bo_utils/poe_gp.py::PoEGPModel) instead of a single
+        # surrogate. Mutually exclusive with pretrained_surrogate_path in
+        # practice (surrogate_type="gp_poe" vs "gp_dkl"), kept as a separate
+        # field since the shapes genuinely differ (one path+one inducing
+        # count vs. a manifest of many).
+        self.poe_manifest_path = poe_manifest_path
 
         assert acq_func in ["ei", "ts"]
         if minimize:
@@ -188,22 +212,57 @@ class LOLBOState:
     def initialize_surrogate_model(self):
         likelihood = gpytorch.likelihoods.GaussianLikelihood().cuda()
         n_pts = min(self.train_z.shape[0], 1024)
+        construction_z = self.train_z
+        if self.pretrained_surrogate_path is not None:
+            assert self.pretrained_surrogate_num_inducing is not None, (
+                "pretrained_surrogate_num_inducing must be given alongside pretrained_surrogate_path "
+                "-- the inducing-point count is baked into the saved state dict's shapes and must match exactly"
+            )
+            n_pts = self.pretrained_surrogate_num_inducing
+            if self.train_z.shape[0] < n_pts:
+                # GPModelDKL's constructor only uses these values to fix tensor SHAPES
+                # (inducing-point count, feature-extractor dims) -- every actual value
+                # (inducing points, feature-extractor weights, variational params) gets
+                # completely overwritten by load_state_dict() below. So a held-out init
+                # pool smaller than the pretrained inducing-point count is not actually
+                # a hard requirement -- pad by repeat-sampling existing rows purely to
+                # reach the right construction shape (real bug found via a real-scale
+                # run: MTBO's checkpoints use 1024 inducing points, but held-out target
+                # pool sizes as small as 10 are a legitimate, intended comparison point).
+                pad_idx = torch.randint(0, self.train_z.shape[0], (n_pts - self.train_z.shape[0],))
+                construction_z = torch.cat([self.train_z, self.train_z[pad_idx]], dim=0)
         if self.surrogate_type == "gp_dkl":
             print("Using GP DKL surrogate model")
             self.model = GPModelDKL(
-                self.train_z[:n_pts, :].cuda(), likelihood=likelihood
+                construction_z[:n_pts, :].cuda(), likelihood=likelihood
             ).cuda()
+            if self.pretrained_surrogate_path is not None:
+                print(f"Loading pretrained surrogate state dict from {self.pretrained_surrogate_path}")
+                state_dict = torch.load(self.pretrained_surrogate_path)
+                self.model.load_state_dict(state_dict, strict=True)
         elif self.surrogate_type == "gp_saas":
             print("Using MAP SaaS GP surrogate model")
             self.model = MAPSaasGPModel(
                 self.train_z[:n_pts, :].cuda(), likelihood=likelihood
             ).cuda()
+        elif self.surrogate_type == "gp_poe":
+            print(f"Using PoE ensemble surrogate model, manifest={self.poe_manifest_path}")
+            self.model = self._build_poe_model()
         else:
             raise ValueError(f"Surrogate type {self.surrogate_type} not recognized")
 
-        self.mll = PredictiveLogLikelihood(
-            self.model.likelihood, self.model, num_data=self.train_z.size(-2)
-        )
+        if self.surrogate_type == "gp_poe":
+            # PoEGPModel wraps K frozen experts, each with its own likelihood --
+            # there is no single shared mll to compute for the ensemble as a
+            # whole. update_surrogate_model() below is a no-op for this
+            # surrogate_type, so self.mll is never actually used, but every
+            # other code path (e.g. update_models_e2e's signature) expects the
+            # attribute to exist.
+            self.mll = None
+        else:
+            self.mll = PredictiveLogLikelihood(
+                self.model.likelihood, self.model, num_data=self.train_z.size(-2)
+            )
         self.model = self.model.eval()
         self.model = self.model.cuda()
 
@@ -211,6 +270,32 @@ class LOLBOState:
             self.initialize_constraint_surrogates()
 
         return self
+
+    def _build_poe_model(self) -> PoEGPModel:
+        """Loads every expert listed in self.poe_manifest_path into a fresh
+        GPModelDKL (same load pattern as the single-pretrained-surrogate
+        branch above, including the same inducing-point-padding fix -- each
+        expert's own num_inducing_points is baked into its own state dict's
+        shapes, read from its sidecar surrogate_meta.json, and may itself
+        exceed this held-out task's train_z size)."""
+        manifest = json.loads(Path(self.poe_manifest_path).read_text())
+        experts, weights = [], []
+        for entry in manifest["experts"]:
+            expert_path = Path(entry["path"])
+            expert_meta = json.loads(expert_path.with_name("surrogate_meta.json").read_text())
+            n_ind = expert_meta["num_inducing_points"]
+            expert_construction_z = self.train_z
+            if self.train_z.shape[0] < n_ind:
+                pad_idx = torch.randint(0, self.train_z.shape[0], (n_ind - self.train_z.shape[0],))
+                expert_construction_z = torch.cat([self.train_z, self.train_z[pad_idx]], dim=0)
+            expert_likelihood = gpytorch.likelihoods.GaussianLikelihood().cuda()
+            expert_model = GPModelDKL(
+                expert_construction_z[:n_ind, :].cuda(), likelihood=expert_likelihood
+            ).cuda()
+            expert_model.load_state_dict(torch.load(expert_path), strict=True)
+            experts.append(expert_model)
+            weights.append(entry["weight"])
+        return PoEGPModel(experts, weights)
 
     def update_next(self, z_next_, y_next_, x_next_, c_next_=None, acquisition=False):
         """Add new points (z_next, y_next, x_next) to train data
@@ -284,6 +369,16 @@ class LOLBOState:
         return self
 
     def update_surrogate_model(self):
+        if self.surrogate_type == "gp_poe":
+            # The ensemble is frozen for the whole held-out run by design --
+            # POGPE/SGPE's whole point is K pretrained experts (+ SGPE's one
+            # online target expert, fit once up front) reused as-is, not
+            # retrained every acquisition round. Retraining all K+1 members
+            # every round would also reproduce exactly the "must query/
+            # maintain K models at every step" cost blowup the source paper
+            # flags -- here we only ever pay the query cost, never a
+            # per-step retrain cost.
+            return self
         if not self.initial_model_training_complete:
             # first time training surr model --> train on all data
             n_epochs = self.init_n_epochs
@@ -319,6 +414,12 @@ class LOLBOState:
 
     def update_models_e2e(self):
         """Finetune VAE end to end with surrogate model"""
+        if self.surrogate_type == "gp_poe":
+            raise NotImplementedError(
+                "end-to-end VAE fine-tuning is not supported for the gp_poe surrogate type "
+                "(a frozen K-expert ensemble has no single model/mll to fine-tune against) -- "
+                "callers must pass update_e2e=False whenever surrogate_type='gp_poe'"
+            )
         self.progress_fails_since_last_e2e = 0
         new_xs = self.train_x[-self.bsz :]
         new_ys = self.train_y[-self.bsz :].squeeze(-1).tolist()
