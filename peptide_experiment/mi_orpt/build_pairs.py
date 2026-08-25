@@ -40,7 +40,7 @@ if str(FINE_TUNING_DIR) not in sys.path:
 from make_dpo_train_data_csv import SYSTEM_PROMPT, load_reference_sequence, make_messages  # noqa: E402
 
 from ..config import ExperimentConfig
-from .candidate_bank import build_eligible_bank, min_bank_size_needed
+from .candidate_bank import build_eligible_bank, build_eligible_bank_from_init_scores, min_bank_size_needed
 from .pair_construction import construct_pairs_for_task
 from .warm_pool import create_pool
 from .warm_scoring_pool import create_scoring_pool, score_sequences_parallel
@@ -82,6 +82,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cuda-visible-devices", default=None)
     parser.add_argument("--parallel-gpus", nargs="*", default=None, help="CUDA device ids to round-robin across for concurrent one-step BO calls -- omit for serial (default)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--candidate-init",
+        type=Path,
+        nargs="+",
+        default=None,
+        help="Per-task init.txt from a dedicated cfg.mi_candidate_temperature sampling pass "
+        "(steps.py::sample_and_build_init), one per --input-csv in the same order. When given "
+        "(together with --candidate-scores), the eligible bank is built from these instead of "
+        "--input-csv's trajectory CSV -- --input-csv/--reference-index are still required (only "
+        "the bank-building source changes, not task selection).",
+    )
+    parser.add_argument(
+        "--candidate-scores",
+        type=Path,
+        nargs="+",
+        default=None,
+        help="Per-task scores.csv paired 1:1 with --candidate-init.",
+    )
     return parser.parse_args()
 
 
@@ -112,6 +130,19 @@ def main() -> None:
     reference_sequences = [load_reference_sequence(i) for i in args.reference_index]
     if len(args.input_csv) != len(reference_sequences):
         raise ValueError(f"Expected one reference per input CSV, got {len(args.input_csv)} CSVs and {len(reference_sequences)} references.")
+
+    if args.candidate_init is not None or args.candidate_scores is not None:
+        if args.candidate_init is None or args.candidate_scores is None:
+            raise ValueError("--candidate-init and --candidate-scores must be given together")
+        if len(args.candidate_init) != len(args.input_csv) or len(args.candidate_scores) != len(args.input_csv):
+            raise ValueError(
+                f"Expected one --candidate-init/--candidate-scores pair per --input-csv, got "
+                f"{len(args.candidate_init)} candidate-init, {len(args.candidate_scores)} candidate-scores, "
+                f"{len(args.input_csv)} input-csv."
+            )
+    else:
+        args.candidate_init = [None] * len(args.input_csv)
+        args.candidate_scores = [None] * len(args.input_csv)
 
     # Created once, shared across every task in this milestone (not
     # recreated per task) -- the whole point of the warm pool is
@@ -152,8 +183,13 @@ def main() -> None:
         scoring_model, scoring_tokenizer = load_model_and_tokenizer(args.torchtune_config, args.checkpoint_dir)
     try:
         all_pairs: list[dict] = []
-        for input_csv, task_idx, reference_sequence in zip(args.input_csv, args.reference_index, reference_sequences):
-            bank = build_eligible_bank(input_csv, reference_sequence, args.similarity_threshold)
+        for input_csv, task_idx, reference_sequence, candidate_init, candidate_scores in zip(
+            args.input_csv, args.reference_index, reference_sequences, args.candidate_init, args.candidate_scores
+        ):
+            if candidate_init is not None:
+                bank = build_eligible_bank_from_init_scores(candidate_init, candidate_scores, reference_sequence, args.similarity_threshold)
+            else:
+                bank = build_eligible_bank(input_csv, reference_sequence, args.similarity_threshold)
             min_needed = min_bank_size_needed(args.m, num_reserved=args.max_candidates_per_task)
             if len(bank) < min_needed:
                 print(f"[build_pairs] {input_csv}: bank has {len(bank)} candidates, need >= {min_needed}, skipping task")

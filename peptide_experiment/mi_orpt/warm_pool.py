@@ -80,6 +80,14 @@ def _run_one_in_worker(payload: dict) -> tuple[bool, float | str]:
         seed: int = payload["seed"]
 
         work_dir.mkdir(parents=True, exist_ok=True)
+        dest_csv = work_dir / f"task_{task_idx:04d}.csv"
+        if dest_csv.exists():
+            # Mirrors steps.run_bo()'s own skip-if-exists check -- this
+            # path calls the optimizer directly instead of going through
+            # run_bo(), so it has to repeat that check itself.
+            existing = pd.read_csv(dest_csv)
+            return True, float(existing["train_y"].max())
+
         init_path = work_dir / f"task_{task_idx:04d}_init.txt"
         scores_path = work_dir / f"task_{task_idx:04d}_scores.csv"
         init_path.write_text("\n".join(pool_seqs) + "\n")
@@ -112,7 +120,6 @@ def _run_one_in_worker(payload: dict) -> tuple[bool, float | str]:
         # (train_x/train_y columns) -- used repeatedly this session for
         # file-timestamp-based timing diagnostics, and may be relied on by
         # other tooling that inspects these work dirs.
-        dest_csv = work_dir / f"task_{task_idx:04d}.csv"
         df = {
             "train_x": np.array(opt.lolbo_state.train_x),
             "train_y": opt.lolbo_state.train_y.squeeze().detach().cpu().numpy(),

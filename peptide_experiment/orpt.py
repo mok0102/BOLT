@@ -20,7 +20,8 @@ import dataclasses
 import sys
 
 from .config import ExperimentConfig
-from .steps import _run, cleanup_intermediate_epochs
+from .mi_orpt.candidate_bank import min_bank_size_needed
+from .steps import _run, cleanup_intermediate_epochs, sample_and_build_init
 
 FINE_TUNING_DIR = "fine-tuning/peptides"
 
@@ -56,6 +57,32 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
 
     if cfg.orpt_pair_source == "matched_intervention":
         torchtune_config_path = cfg.bolt_root / FINE_TUNING_DIR / "torchtune_config" / cfg.torchtune_config
+
+        candidate_inits: list = []
+        candidate_scores: list = []
+        if cfg.mi_candidate_temperature is not None:
+            # Dedicated candidate pool for mi_orpt's own bank, sampled at
+            # cfg.mi_candidate_temperature -- separate from trajectories_csv_dir,
+            # so BOLT-<milestone>'s own SFT dataset (built from trajectories_csv_dir
+            # elsewhere) is unaffected by this temperature choice.
+            pool_dir = cfg.run_dir / "mi_candidate_pool"
+            # Target unique-candidate count, NOT cfg.init_size: sample_and_build_init's
+            # own retry loop only chases cfg.init_size unique draws (pre-feasibility-
+            # filter), which is mathematically guaranteed to fall short of
+            # min_bank_size_needed(init_size, mi_max_candidates_per_task) once
+            # infeasible/duplicate draws are filtered out downstream -- see
+            # cfg.mi_candidate_pool_size's docstring.
+            pool_size = cfg.mi_candidate_pool_size or (
+                min_bank_size_needed(cfg.init_size, cfg.mi_max_candidates_per_task) * 2
+            )
+            pool_cfg = dataclasses.replace(cfg, init_size=pool_size)
+            for i in range(milestone):
+                init_path, scores_path = sample_and_build_init(
+                    pool_cfg, cfg.milestone_checkpoint_dir(milestone), i, pool_dir, temperature=cfg.mi_candidate_temperature
+                )
+                candidate_inits.append(init_path)
+                candidate_scores.append(scores_path)
+
         cmd = [
             sys.executable,
             "-m",
@@ -99,6 +126,8 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
             "--seed",
             42,
         ]
+        if candidate_inits:
+            cmd += ["--candidate-init", *candidate_inits, "--candidate-scores", *candidate_scores]
         if cfg.cuda_visible_devices is not None:
             cmd += ["--cuda-visible-devices", cfg.cuda_visible_devices]
         launch_cfg = cfg
@@ -249,6 +278,12 @@ def train_orpt_milestone(cfg: ExperimentConfig, milestone: int):
             f"ii_loss.gamma_i={cfg.fa_orpt_gamma_i}",
             f"ii_loss.lambda_inf={cfg.fa_orpt_lambda_inf}",
         ]
+    elif cfg.orpt_loss_type == "bpo":
+        # bpo_loss.BPOLoss is a drop-in loss._component_ replacement under the
+        # stock lora_dpo_distributed recipe (see fine-tuning/peptides/bpo_loss.py) --
+        # loss.beta (already appended above) is reused as-is; only the extra
+        # alpha "gap adaptor" hyperparameter needs threading through.
+        overrides += [f"loss.alpha={cfg.orpt_bpo_alpha}"]
 
     _run(
         [

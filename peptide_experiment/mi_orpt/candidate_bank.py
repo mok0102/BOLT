@@ -22,6 +22,7 @@ if str(FINE_TUNING_DIR) not in sys.path:
     sys.path.insert(0, str(FINE_TUNING_DIR))
 
 from make_dpo_train_data_csv import load_scored_sequences  # noqa: E402
+from make_train_data_csv import is_similar_enough  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,33 @@ def build_eligible_bank(trajectory_csv: Path, reference_sequence: str, similarit
         if seq in seen:
             continue
         seen.add(seq)
+        bank.append(EligibleCandidate(seq=seq, y=score))
+    return bank
+
+
+def build_eligible_bank_from_init_scores(
+    init_path: Path, scores_path: Path, reference_sequence: str, similarity_threshold: float
+) -> list[EligibleCandidate]:
+    """Same feasible/unique/first-occurrence-wins bank as build_eligible_bank(),
+    but sourced from a plain init.txt (one sequence/line) + scores.csv (one
+    score/line, matched by line index) pair -- the format
+    steps.py::sample_and_build_init() writes -- instead of a BO trajectory
+    CSV's train_x/train_y columns. Used for mi_orpt's dedicated
+    cfg.mi_candidate_temperature candidate pool, which is a fresh sampled-init
+    pool, not a full BO trajectory."""
+    seqs = [line for line in init_path.read_text().splitlines() if line.strip()]
+    scores = [float(line) for line in scores_path.read_text().splitlines() if line.strip()]
+    if len(seqs) != len(scores):
+        raise ValueError(f"{init_path} has {len(seqs)} sequences but {scores_path} has {len(scores)} scores")
+
+    seen = set()
+    bank = []
+    for seq, score in zip(seqs, scores):
+        if seq in seen:
+            continue
+        seen.add(seq)
+        if not is_similar_enough(seq, reference_sequence, similarity_threshold):
+            continue
         bank.append(EligibleCandidate(seq=seq, y=score))
     return bank
 
