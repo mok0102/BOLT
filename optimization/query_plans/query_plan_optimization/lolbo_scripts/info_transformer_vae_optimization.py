@@ -37,12 +37,14 @@ class InfoTransformerVAEOptimization(Optimize):
         constraint_function_ids: list = [],  # list of strings identifying the black box constraint function to use
         constraint_thresholds: list = [],  # list of corresponding threshold values (floats)
         constraint_types: list = [],  # list of strings giving correspoding type for each threshold ("min" or "max" allowed)
+        init_csv_path: str = None,  # explicit path to a pre-built {x,y,censoring} init CSV; overrides the init_w_bao/init_w_random/init_w_llm fallback below when set. Additive: unset (None) reproduces every existing call site's behavior exactly.
         **kwargs,
     ):
         self.path_to_vae_statedict = path_to_vae_statedict
         self.dim = dim
         self.task_specific_args = task_specific_args
         self.init_data_timeout = init_data_timeout
+        self.init_csv_path = init_csv_path
         # To specify constraints, pass in
         #   1. constraint_function_ids: a list of constraint function ids,
         #   2. constraint_thresholds: a list of thresholds,
@@ -209,6 +211,51 @@ class InfoTransformerVAEOptimization(Optimize):
             self.init_train_x = x
             self.init_train_y = y
             self.worst_runtime_observed = self.init_train_y.min().item() * -1
+        elif self.init_csv_path is not None:
+            # Additive override (query_plan_experiment/steps.py::run_bo): a
+            # pre-built, run-context-qualified init CSV, already scored by
+            # the real oracle. Needed because none of init_w_bao/
+            # init_w_random/init_w_llm above support a per-(experiment, arm,
+            # workload) file -- e.g. held-out eval evaluates multiple
+            # BOLT-<m> arms against the same 99 workloads, and the plain
+            # `{workload_name}_init_data.csv` path below is shared by every
+            # arm with no run-context qualifier, which would silently reuse
+            # one arm's stale init data for the next. Falls through to the
+            # exact same x/y/censoring extraction the else-branch below uses
+            # (same {x, y, censoring} CSV schema) -- only init_data_path's
+            # source differs.
+            init_data_path = self.init_csv_path
+            if not os.path.exists(init_data_path):
+                raise FileNotFoundError(f"--init_csv_path={init_data_path} does not exist")
+
+            df = pd.read_csv(init_data_path)
+
+            x = df["x"].values.tolist()
+            x = x[0 : self.num_initialization_points]
+
+            # Preprocessing for databases stuff:
+            x = [xi.split(",") for xi in x]
+            x = [[int(xj) for xj in xi] for xi in x]
+
+            y = torch.from_numpy(df["y"].values).float()
+            y = y[0 : self.num_initialization_points]
+            y = y.unsqueeze(-1)
+
+            if y.max() > 0:
+                y = (
+                    y * -1
+                )  # if init data file did not already negate runtimes, negate here (create maximization problem)
+            self.init_train_x = x
+            self.init_train_y = y
+            self.worst_runtime_observed = self.init_train_y.min().item() * -1
+
+            if self.censored_observations:
+                cen = torch.from_numpy(df["censoring"].values)
+                cen = cen[0 : self.num_initialization_points]
+                cen = cen.unsqueeze(-1)
+                self.init_censoring = cen
+            else:
+                self.init_censoring = None
         else:
             init_data_path = f"../initialization_data/{self.workload_name}_init_data.csv"
 

@@ -1,0 +1,48 @@
+# Paper-fidelity query-plan config (Table 1): every ExperimentConfig field
+# spelled out so this doubles as a reference for what's configurable -- same
+# convention as peptide_experiment/configs/peptide_main.yaml.
+#
+# Real prerequisites before running (see
+# imp_plan/02_query_plan_reimplementation_plan.md's verification plan):
+#   1. IMDB Postgres container running, DB_HOST/DB_USER/DB_PASSWORD exported.
+#   2. optimization/query_plans/query_plan_optimization/workload/ceb-3k.zip extracted in place.
+#   3. Confirmed Python environment for optimization/query_plans/ subprocess calls
+#      (its own poetry-managed deps, distinct from fine-tuning/query_plans's) --
+#      set lolbo_python below if it needs a dedicated interpreter.
+#   4. Run the smoke config (query_plan_smoke.yaml) clean first.
+experiment_id: query_plan_main_v1
+
+# Table 1's 4 milestones (paper p.9), over the 1426-task training workload.
+milestones: [50, 893, 1138, 1426]
+# Paper budget: 4000 oracle calls/task, acquisition batch size 1 (p.5-6).
+oracle_budget: 4000
+bsz: 1
+# Paper init: 50 BAO-generated plans (BOLT-50 arm) / 50 LLM-sampled plans
+# (later milestones). Optimize's own num_initialization_points default (200)
+# is a generic LOL-BO-template leftover -- always override it to this value.
+init_size: 50
+sft_epochs: 1
+
+torchtune_config: qwen_2_5_3B_lora.yaml
+torchtune_recipe: lora_finetune_distributed
+base_checkpoint_dir: fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct
+
+max_train_tasks: null  # null -> max(milestones) == 1426
+heldout_tasks_override: null  # null -> the real 99-task held-out set (task_splits.heldout_workloads())
+
+which_query_language: aliases
+allow_cross_joins: true
+
+# Cold-start (no real pretrained query-plan VAE ships with this repo -- see
+# imp_plan/02_query_plan_reimplementation_plan.md's VAE section). Set
+# use_pretrained_vae: true + vae_statedict_path once a real checkpoint is
+# sourced.
+use_pretrained_vae: false
+vae_statedict_path: null
+
+query_timeout_secs: 100.0
+sft_top_n_per_task: 50
+table_k_checkpoints: null  # null -> report only the terminal oracle_budget
+
+cuda_visible_devices: null  # set to a free GPU id on this host before running
+lolbo_python: null  # set if optimization/query_plans/ needs a dedicated interpreter (see prerequisite 3 above)

@@ -1,3 +1,4 @@
+import argparse
 import pandas as pd
 import os
 import json
@@ -5,8 +6,22 @@ import json
 import re
 
 
-raw_data_path = "data/example_finetuning_data.csv"
-output_path = "data/example_finetuning_data.jsonl"
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Convert a query-plan train CSV (task, train_x) into a chat JSONL."
+    )
+    parser.add_argument("--data-path", default="data/example_finetuning_data.csv")
+    parser.add_argument("--save-path", default="data/example_finetuning_data.jsonl")
+    return parser.parse_args()
+
+
+# Additive: query_plan_experiment/trajectory_chain.py calls this with
+# explicit --data-path/--save-path per milestone (the module-level hardcoded
+# defaults below are otherwise unchanged, so any pre-existing direct-run
+# usage of this script keeps working exactly as before).
+_args = parse_args()
+raw_data_path = _args.data_path
+output_path = _args.save_path
 excluded_tasks = ""
 included_tasks = None
 

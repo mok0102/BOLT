@@ -107,12 +107,35 @@ class InfoTransformerVAEObjective(LatentSpaceObjective):
 
     def initialize_vae(self):
         """Sets self.vae to the desired pretrained vae"""
-        if self.shared_vae is None:
-            self.vae = VAEModule.load_from_checkpoint(self.path_to_vae_statedict).cuda()
-        else:
+        if self.shared_vae is not None:
             # for case when multiple runs share the same vae, don't want to
             # re-init the same vae multiple times
             self.vae = self.shared_vae
+        elif not self.path_to_vae_statedict:
+            # Cold-start (query_plan_experiment): the paper's real VAE
+            # (appendix C.1) is a pre-trained, never-retrained-during-BO
+            # artifact from external prior work (Tao et al. 2025) that isn't
+            # available anywhere in this repo -- only a placeholder
+            # checkpoint file exists. Construct a randomly-initialized
+            # VAEModule instead (bn_size=1 so its latent dim is exactly
+            # self.dim, matching every caller that assumes a self.dim-sized
+            # z e.g. random z fallback / vae_forward's reshape). A documented,
+            # known fidelity deviation -- see
+            # imp_plan/02_query_plan_reimplementation_plan.md. codec.py's
+            # decode already tolerates a nominal (table, alias) pair outside
+            # a specific query's real alias range via hash-mod resolution,
+            # so num_aliases only needs to be a generous, self-consistent
+            # vocabulary bound, not exactly right for every query.
+            from vae.model import build_vocab
+
+            all_tables = self.objective_function.full_workload_spec.all_tables
+            max_query_aliases = max(
+                (n for _, n in self.objective_function.full_workload_spec.query_tables), default=1
+            )
+            vocab, rev_vocab = build_vocab(num_tables=len(all_tables), num_aliases=max_query_aliases + 4)
+            self.vae = VAEModule(vocab=vocab, rev_vocab=rev_vocab, bn_size=1, d_neck=self.dim).cuda()
+        else:
+            self.vae = VAEModule.load_from_checkpoint(self.path_to_vae_statedict).cuda()
 
     def vae_forward(self, xs_batch):
         """Input:
