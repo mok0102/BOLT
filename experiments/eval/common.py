@@ -34,7 +34,7 @@ from apex_oracle.refseqs import REFERENCE_SEQUENCE  # noqa: E402
 from make_initialization_data import extract_sequence  # noqa: E402
 from Levenshtein import distance as edit_distance  # noqa: E402
 
-TASK_SETS = ("trainset", "heldout")
+TASK_SETS = ("trainset", "heldout", "heldout100")
 
 
 def similarity(seq: str, reference: str) -> float:
@@ -116,12 +116,20 @@ def task_indices(cfg: ExperimentConfig, task_set: str) -> list[int]:
     """trainset: the fixed subset every milestone's checkpoint has already
     been trained on (range(min(milestones))) -- apples-to-apples across
     milestones, distinct from cfg.train_task_range()'s full cumulative
-    max(milestones) range. heldout: cfg's held-out task list (respects
-    heldout_tasks_override, e.g. the 5-task PoC subset)."""
+    max(milestones) range. heldout: cfg's 20-task held-out list (respects
+    heldout_tasks_override, e.g. the 5-task PoC subset). heldout100: cfg's
+    full 100-task held-out list (paper's Figure 1/2 task universe) -- added
+    for the main-scale BOLT-vs-ORPT-MI comparison, which deliberately uses
+    100 held-out tasks for both the incumbent-vs-pool-size and fixed-target
+    analyses (a user choice, not the paper's own literal Table-11-vs-Figure-
+    1/2 20-vs-100 split); every existing caller passing "heldout"/"trainset"
+    is unaffected."""
     if task_set == "trainset":
         return list(range(min(cfg.milestones)))
     if task_set == "heldout":
         return list(cfg.heldout_tasks("heldout20"))
+    if task_set == "heldout100":
+        return list(cfg.heldout_tasks("heldout100"))
     raise ValueError(f"unknown task_set {task_set!r}, expected one of {TASK_SETS}")
 
 

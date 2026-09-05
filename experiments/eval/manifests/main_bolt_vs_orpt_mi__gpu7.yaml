@@ -1,0 +1,38 @@
+# Milestone-independent-baselines chunk of main_bolt_vs_orpt_mi.yaml
+# (pinned to GPU 7 via peptide_main_eval_gpu7.yaml -- previously idle since
+# there was no 8th milestone; now used for the 3 baselines that don't scale
+# with training-pool milestone at all).
+#
+# POGPE/SGPE: ModelSpec.milestone is overloaded to mean n_experts (5/10/20 --
+# see peptide_experiment/gp_expert_transfer.py and
+# experiments/eval/fixed_target_rejection_bo.py's own POGPE/SGPE branch), NOT
+# a real training milestone -- do not plot these against the main
+# BOLT/ORPT-MI/OptFormer/MTBO milestone axis (126-900), they'd land far off
+# the real x-axis range. Report separately from summary_fixed_target_bo.csv.
+#
+# LLAMBO: never fine-tuned (in-context BO against the unmodified base
+# checkpoint); milestone is an arbitrary placeholder, unused by
+# run_llambo_bo. plot_arm_line already renders single-milestone arms as a
+# flat dashed reference line, so LLAMBO is safe to include in the main plots.
+models:
+- arm: POGPE
+  milestone: 5
+  run_dir: runs/peptide_main_bolt
+- arm: POGPE
+  milestone: 10
+  run_dir: runs/peptide_main_bolt
+- arm: POGPE
+  milestone: 20
+  run_dir: runs/peptide_main_bolt
+- arm: SGPE
+  milestone: 5
+  run_dir: runs/peptide_main_bolt
+- arm: SGPE
+  milestone: 10
+  run_dir: runs/peptide_main_bolt
+- arm: SGPE
+  milestone: 20
+  run_dir: runs/peptide_main_bolt
+- arm: LLAMBO
+  milestone: 0
+  run_dir: runs/peptide_main_bolt

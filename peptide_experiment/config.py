@@ -147,11 +147,18 @@ class ExperimentConfig:
     # evaluations is independent (fully separate LOLBO subprocesses),
     # so this cuts wall-clock cost by up to len(mi_parallel_gpus)x on a
     # multi-GPU machine. None (default): fully serial, one call at a time
-    # on cuda_visible_devices -- today's behavior, unchanged. Independent
-    # of cuda_visible_devices, which still governs everything else
-    # (trajectory sampling, BOLT SFT, ORPT DPO training) -- these never
-    # run concurrently with pair construction, so the two can overlap or
-    # not without any runtime GPU contention.
+    # on cuda_visible_devices -- today's behavior, unchanged.
+    #
+    # Also reused (steps.py::distributed_finetune_launch) as the device
+    # list for SFT/DPO fine-tuning's own `tune run --nproc_per_node`, per
+    # explicit user request -- this host has enough GPU headroom for both
+    # uses. When set, both BOLT-<m> SFT and ORPT-<m> DPO training launch
+    # torchtune's distributed recipe across all of these GPUs (per-device
+    # batch_size auto-scaled down so the effective global batch size
+    # matches the single-GPU config's own), not just pair construction.
+    # cuda_visible_devices otherwise still governs everything else
+    # (trajectory sampling, LOLBO BO calls) -- those stay single-GPU
+    # regardless of mi_parallel_gpus.
     mi_parallel_gpus: list[str] | None = None
     # None (default): matched_intervention's candidate bank reads the same
     # cumulative trajectory data (trajectories_csv_dir) that milestone's

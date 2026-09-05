@@ -21,7 +21,7 @@ import sys
 
 from .config import ExperimentConfig
 from .mi_orpt.candidate_bank import min_bank_size_needed
-from .steps import _run, cleanup_intermediate_epochs, sample_and_build_init
+from .steps import _run, cleanup_intermediate_epochs, distributed_finetune_launch, sample_and_build_init
 
 FINE_TUNING_DIR = "fine-tuning/peptides"
 
@@ -285,6 +285,8 @@ def train_orpt_milestone(cfg: ExperimentConfig, milestone: int):
         # alpha "gap adaptor" hyperparameter needs threading through.
         overrides += [f"loss.alpha={cfg.orpt_bpo_alpha}"]
 
+    extra_overrides, launch_cfg = distributed_finetune_launch(cfg, cfg.orpt_torchtune_config, fine_tuning_dir)
+    nproc_per_node = len(cfg.mi_parallel_gpus) if cfg.mi_parallel_gpus else 1
     _run(
         [
             "tune",
@@ -292,14 +294,15 @@ def train_orpt_milestone(cfg: ExperimentConfig, milestone: int):
             "--nnodes",
             "1",
             "--nproc_per_node",
-            "1",
+            str(nproc_per_node),
             cfg.orpt_torchtune_recipe,
             "--config",
             f"torchtune_config/{cfg.orpt_torchtune_config}",
             *overrides,
+            *extra_overrides,
         ],
         cwd=fine_tuning_dir,
-        cfg=cfg,
+        cfg=launch_cfg,
     )
     if not final_ckpt.exists():
         raise RuntimeError(

@@ -82,12 +82,27 @@ def train_mtbo_surrogate(cfg: ExperimentConfig, milestone: int) -> Path:
     # -- true for every existing call site (always a subprocess launched with
     # cwd=optimization/peptides/lolbo_scripts or similar), but this module
     # calls load_vae() in-process, so CWD must be set explicitly here.
+    # vae_forward() has no internal batching -- passing all of pooled_seqs in
+    # one call (up to mtbo_top_n_per_task * milestone, e.g. 126,000+ at
+    # main-experiment scale, vs. PoC scale's much smaller actual pooled count)
+    # overflows a CUDA kernel launch limit inside nn.TransformerEncoderLayer's
+    # nested-tensor fastpath ("CUDA error: invalid configuration argument").
+    # Chunk it -- encoding is per-sequence independent (the batch dimension
+    # only affects padding-mask grouping), so this is exact, not approximate.
+    VAE_ENCODE_CHUNK_SIZE = 1024
+
     prev_cwd = os.getcwd()
     os.chdir(PEPTIDES_DIR)
     try:
         vae, dataobj = load_vae(PATH_TO_VAE_STATE_DICT)
+        z_chunks = []
         with torch.no_grad():
-            train_z, _vae_loss = vae_forward(pooled_seqs, dataobj, vae)
+            for start in range(0, len(pooled_seqs), VAE_ENCODE_CHUNK_SIZE):
+                chunk_z, _vae_loss = vae_forward(
+                    pooled_seqs[start : start + VAE_ENCODE_CHUNK_SIZE], dataobj, vae,
+                )
+                z_chunks.append(chunk_z)
+        train_z = torch.cat(z_chunks, dim=0)
     finally:
         os.chdir(prev_cwd)
     train_z = train_z.detach().cpu()

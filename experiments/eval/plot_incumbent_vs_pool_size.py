@@ -33,7 +33,7 @@ import pandas as pd
 
 from plot_common import MUTED_TEXT, arm_colors, filter_arms, load_concat_csv, resolve_out_dir, sorted_arms, style_axis
 
-TASK_SET_LABEL = {"heldout": "held-out peptides", "trainset": "trained peptides"}
+TASK_SET_LABEL = {"heldout": "held-out peptides (20)", "trainset": "trained peptides", "heldout100": "held-out peptides (100)"}
 
 
 def plot_fig1(df: pd.DataFrame, task_set: str, out_path: Path, n_proposals: int) -> None:
@@ -172,7 +172,12 @@ def main() -> None:
     summary_df = filter_arms(load_concat_csv(results_dirs, "summary_incumbent_vs_pool_size.csv"), arms)
     plots_dir = resolve_out_dir(results_dirs, args.out_dir) / "plots"
 
-    for task_set in ("trainset", "heldout"):
+    # Derived from whatever's actually present in the loaded data, not a
+    # hardcoded ("trainset", "heldout") pair -- so results computed with a
+    # task_set common.py didn't know about yet at the time this was written
+    # (e.g. "heldout100") still get plotted, not silently skipped.
+    present_task_sets = sorted(set(df["task_set"]) | set(summary_df["task_set"]))
+    for task_set in present_task_sets:
         plot_fig1(
             df, task_set, plots_dir / f"incumbent_mic_bymilestone_n{args.n_proposals}_{task_set}.png",
             n_proposals=args.n_proposals,

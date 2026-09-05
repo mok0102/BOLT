@@ -1,0 +1,167 @@
+# BOLT vs ORPT-MI vs baselines, main-experiment (paper-fidelity) scale
+# comparison: runs/peptide_main_bolt (SFT-only arm, dedicated independent
+# trajectory chain -- also hosts the OptFormer-<m>/MTBO-<m>/GPExperts-<n>
+# baselines trained into the same run_dir, see peptide_experiment/
+# {optformer,mtbo,gp_expert_transfer}.py) vs runs/peptide_main_orpt_mi
+# (matched-intervention DPO arm) -- each its own experiment_id/run_dir,
+# sharing oracle_budget=20000/init_size=1000/bsz=50/sft_epochs=5/
+# similarity_threshold=0.75/milestones=[126,252,378,504,630,756,900] (see
+# peptide_experiment/configs/peptide_main_bolt.yaml/peptide_main_orpt_mi.yaml).
+# Deliberately NOT using peptide_main_orpt_mi's own internal BOLT-<m>
+# checkpoints (its ORPT-conditioned trajectory chain samples differently
+# from milestone 1 onward) -- BOLT here always means the dedicated
+# runs/peptide_main_bolt arm.
+#
+# Uses the 100-task held-out set (task_set "heldout100" in every eval
+# invocation using this manifest) for BOTH the incumbent-vs-pool-size and
+# fixed-target-BO analyses -- a deliberate choice (confirmed with the user)
+# to use the same, larger task universe for both, rather than the paper's
+# own literal Table-11-vs-Figure-1/2 20-vs-100 split.
+#
+# Added 2026-09-05: OptFormer/MTBO (milestone-dependent, ride along in the
+# same 7 milestone shards) and POGPE/SGPE/LLAMBO (milestone-independent --
+# POGPE/SGPE's milestone field is overloaded to mean n_experts=5/10/20, and
+# LLAMBO's is an arbitrary unused placeholder -- see gpu7's own manifest
+# comment). None of these 5 arms use generate_raw_proposals.py's raw
+# generation step except OptFormer (it has a real fine-tuned LLM checkpoint,
+# same mechanism as BOLT/ORPT-MI); MTBO/POGPE/SGPE/LLAMBO self-seed their own
+# init pool directly inside fixed_target_rejection_bo.py, so they only ever
+# appear in the fixed-target-BO analysis, never the incumbent-vs-pool-size
+# ("few-shot") one. Do not plot POGPE/SGPE against the main milestone axis
+# (126-900) -- see gpu7 shard's comment; report those via the raw
+# summary_fixed_target_bo.csv/fixed_target_bo_coverage.csv instead.
+#
+# Split into 8 chunks for parallel execution: 7 milestone-group chunks
+# (main_bolt_vs_orpt_mi__gpu{0..6}.yaml, one per real milestone) plus 1
+# milestone-independent-baselines chunk (main_bolt_vs_orpt_mi__gpu7.yaml,
+# POGPE/SGPE/LLAMBO -- GPU 7 was previously idle, now used). This file is
+# the canonical full set (documentation/verification only -- the runbook
+# script drives each shard file directly, this master file is not itself
+# loaded by any step).
+models:
+  - arm: BOLT
+    milestone: 126
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/BOLT-126/epoch_4
+  - arm: BOLT
+    milestone: 252
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/BOLT-252/epoch_4
+  - arm: BOLT
+    milestone: 378
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/BOLT-378/epoch_4
+  - arm: BOLT
+    milestone: 504
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/BOLT-504/epoch_4
+  - arm: BOLT
+    milestone: 630
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/BOLT-630/epoch_4
+  - arm: BOLT
+    milestone: 756
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/BOLT-756/epoch_4
+  - arm: BOLT
+    milestone: 900
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/BOLT-900/epoch_4
+  - arm: ORPT-MI
+    milestone: 126
+    run_dir: runs/peptide_main_orpt_mi
+    checkpoint_dir: runs/peptide_main_orpt_mi/checkpoints/ORPT-126/epoch_0
+  - arm: ORPT-MI
+    milestone: 252
+    run_dir: runs/peptide_main_orpt_mi
+    checkpoint_dir: runs/peptide_main_orpt_mi/checkpoints/ORPT-252/epoch_0
+  - arm: ORPT-MI
+    milestone: 378
+    run_dir: runs/peptide_main_orpt_mi
+    checkpoint_dir: runs/peptide_main_orpt_mi/checkpoints/ORPT-378/epoch_0
+  - arm: ORPT-MI
+    milestone: 504
+    run_dir: runs/peptide_main_orpt_mi
+    checkpoint_dir: runs/peptide_main_orpt_mi/checkpoints/ORPT-504/epoch_0
+  - arm: ORPT-MI
+    milestone: 630
+    run_dir: runs/peptide_main_orpt_mi
+    checkpoint_dir: runs/peptide_main_orpt_mi/checkpoints/ORPT-630/epoch_0
+  - arm: ORPT-MI
+    milestone: 756
+    run_dir: runs/peptide_main_orpt_mi
+    checkpoint_dir: runs/peptide_main_orpt_mi/checkpoints/ORPT-756/epoch_0
+  - arm: ORPT-MI
+    milestone: 900
+    run_dir: runs/peptide_main_orpt_mi
+    checkpoint_dir: runs/peptide_main_orpt_mi/checkpoints/ORPT-900/epoch_0
+  - arm: OptFormer
+    milestone: 126
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/OptFormer-126/epoch_0
+  - arm: OptFormer
+    milestone: 252
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/OptFormer-252/epoch_0
+  - arm: OptFormer
+    milestone: 378
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/OptFormer-378/epoch_0
+  - arm: OptFormer
+    milestone: 504
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/OptFormer-504/epoch_0
+  - arm: OptFormer
+    milestone: 630
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/OptFormer-630/epoch_0
+  - arm: OptFormer
+    milestone: 756
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/OptFormer-756/epoch_0
+  - arm: OptFormer
+    milestone: 900
+    run_dir: runs/peptide_main_bolt
+    checkpoint_dir: runs/peptide_main_bolt/checkpoints/OptFormer-900/epoch_0
+  - arm: MTBO
+    milestone: 126
+    run_dir: runs/peptide_main_bolt
+  - arm: MTBO
+    milestone: 252
+    run_dir: runs/peptide_main_bolt
+  - arm: MTBO
+    milestone: 378
+    run_dir: runs/peptide_main_bolt
+  - arm: MTBO
+    milestone: 504
+    run_dir: runs/peptide_main_bolt
+  - arm: MTBO
+    milestone: 630
+    run_dir: runs/peptide_main_bolt
+  - arm: MTBO
+    milestone: 756
+    run_dir: runs/peptide_main_bolt
+  - arm: MTBO
+    milestone: 900
+    run_dir: runs/peptide_main_bolt
+  - arm: POGPE
+    milestone: 5
+    run_dir: runs/peptide_main_bolt
+  - arm: POGPE
+    milestone: 10
+    run_dir: runs/peptide_main_bolt
+  - arm: POGPE
+    milestone: 20
+    run_dir: runs/peptide_main_bolt
+  - arm: SGPE
+    milestone: 5
+    run_dir: runs/peptide_main_bolt
+  - arm: SGPE
+    milestone: 10
+    run_dir: runs/peptide_main_bolt
+  - arm: SGPE
+    milestone: 20
+    run_dir: runs/peptide_main_bolt
+  - arm: LLAMBO
+    milestone: 0
+    run_dir: runs/peptide_main_bolt

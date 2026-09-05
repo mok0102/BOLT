@@ -1,0 +1,19 @@
+# GPU-3-pinned pointer config for experiments/eval/ scripts run against
+# main_bolt_vs_orpt_mi.yaml's gpu-chunked manifests. Only cuda_visible_devices
+# differs from peptide_main_bolt.yaml -- every other field is read-only
+# shared-constants (similarity_threshold/oracle_budget/init_size/bsz/
+# sft_epochs/heldout_tasks/etc.), which peptide_main_bolt.yaml and
+# peptide_main_orpt_mi.yaml already agree on (both share the same 7-milestone
+# schedule and paper-fidelity budget). This config does NOT select a model --
+# see experiments/eval/README.md's "0. Prerequisite" note.
+# cuda_visible_devices: check nvidia-smi fresh at launch time -- do not
+# assume this value is still free (shared machine).
+experiment_id: peptide_main_bolt
+milestones: [126, 252, 378, 504, 630, 756, 900]
+cuda_visible_devices: "3"
+oracle_budget: 20000
+init_size: 1000
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+build_orpt: false

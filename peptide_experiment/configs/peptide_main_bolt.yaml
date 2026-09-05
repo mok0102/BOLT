@@ -1,0 +1,55 @@
+# Main experiment (paper-fidelity scale), BOLT-only arm -- also the shared
+# run_dir MTBO/OptFormer/GP-expert-transfer are trained from (same dual role
+# peptide_poc20_bolt.yaml served for the PoC comparison).
+#
+# oracle_budget/init_size are peptide_main.yaml's own paper-fidelity values,
+# unchanged. milestones is revised from peptide_main.yaml's own
+# [10,20,50,600] (too sparse, doesn't use the full training pool) to 7
+# evenly-spaced points spanning the full TRAIN_TASKS pool (range(0,900)),
+# same proportional shape as this repo's own real-results-basis schedule
+# (peptide_100task_bolt_v1/peptide_100task_orpt_beta0.25.yaml:
+# [14,28,42,56,70,84,100], i.e. multiples of 14 up to a 100-task pool) scaled
+# ×9 to a 900-task pool (multiples of ~126). milestone=900 uses every
+# available training task -- no wasted headroom, nothing exceeds available
+# data (see apex_oracle/task_splits.py::TRAIN_TASKS).
+#
+# No heldout_tasks_override: defaults to the real heldout20_tasks (900-919,
+# Table 11's actual 20-task protocol), not the 5-task PoC subset.
+#
+# Runs concurrently with peptide_main_orpt_mi.yaml (see that config's own
+# comment) -- BOLT's own trajectory_chain is single-GPU-bound throughout, so
+# it shares the same 8-GPU pool as ORPT-MI's mi_parallel_gpus rather than
+# needing a dedicated reservation (183GB B200s have real headroom; PoC-scale
+# evidence showed only a few GB used per job).
+experiment_id: peptide_main_bolt
+milestones: [126, 252, 378, 504, 630, 756, 900]
+oracle_budget: 20000
+init_size: 1000
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+build_orpt: false
+# Added 2026-09-05: trains MTBO-<m>/OptFormer-<m> baselines into this same
+# run_dir (see peptide_experiment/mtbo.py, optformer.py) for the main-scale
+# BOLT-vs-baselines comparison. Documentation-only here -- cli.py's
+# train_mtbo/train_optformer don't gate on these flags, only aggregate.py's
+# _arms() does, kept true for consistency with what's actually built.
+build_mtbo: true
+build_optformer: true
+# Fixed 2026-09-03: this was missing entirely, so SFT silently fell back to
+# ExperimentConfig's default torchtune_config (qwen_2_5_3B_lora.yaml,
+# batch_size=4) instead of matching peptide_main_orpt_mi.yaml's explicit
+# batch_size=32 -- confirmed via exact step-count arithmetic
+# (train_data_756.jsonl's 754681 rows / 4 == the observed 188670 steps/epoch)
+# after the milestone-756 SFT run was found to be ~8x slower than intended
+# (~13-14h/epoch instead of the expected pace). Restarted from scratch with
+# this fix (torchtune's own resume_from_checkpoint: False means a partial
+# epoch_0 couldn't be resumed anyway) -- also keeps batch size consistent
+# with the ORPT-MI arm for a fair main-experiment comparison.
+torchtune_config: poc_qwen_2_5_3B_lora_bsz32.yaml
+
+# cuda_visible_devices: check nvidia-smi fresh at launch time -- do not
+# assume "0" is still free (shared machine). Any single GPU is fine; this
+# run shares the 8-GPU pool with peptide_main_orpt_mi.yaml's mi_parallel_gpus
+# rather than needing its own dedicated GPU.
+cuda_visible_devices: "0"

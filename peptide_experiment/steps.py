@@ -6,6 +6,7 @@ exact same primitives, just pointed at different output directories.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import random
@@ -13,6 +14,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import yaml
 
 from .config import ExperimentConfig
 
@@ -62,6 +65,54 @@ def cleanup_intermediate_epochs(ckpt_dir: Path, final_ckpt: Path) -> None:
     for epoch_dir in ckpt_dir.glob("epoch_*"):
         if epoch_dir.is_dir() and epoch_dir != final_ckpt:
             shutil.rmtree(epoch_dir)
+
+
+def distributed_finetune_launch(
+    cfg: ExperimentConfig, torchtune_config_name: str, fine_tuning_dir: Path
+) -> tuple[list[str], ExperimentConfig]:
+    """Returns (extra `tune run` config overrides, a possibly-GPU-widened cfg
+    to pass as _run()'s `cfg=` for CUDA_VISIBLE_DEVICES) for SFT/DPO
+    fine-tuning. Shared by trajectory_chain.py::train_milestone() and
+    orpt.py::train_orpt_milestone().
+
+    cfg.mi_parallel_gpus, if set, is reused here too -- not just for
+    matched-intervention pair construction's warm-worker pool (see
+    orpt.py::build_orpt_pairs) -- per explicit user request: the same
+    reserved GPU pool doubles as the fine-tuning device list, since this
+    host has enough headroom for both uses. Unset (default): completely
+    unchanged behavior, --nproc_per_node stays 1, cfg passed through as-is.
+
+    When scaling up, the *effective global* batch size (torchtune's own
+    per-device-batch_size * world_size convention for its distributed
+    recipes) is kept equal to the single-GPU config's own batch_size, by
+    dividing it by nproc_per_node -- multi-GPU here is meant purely as a
+    wall-clock speedup, not a silent change to training dynamics. Read
+    directly from the torchtune config YAML since ExperimentConfig itself
+    has no batch_size field for SFT/DPO (that lives entirely in the recipe
+    config, unlike cfg.bsz which is the BO acquisition batch size).
+    """
+    if not cfg.mi_parallel_gpus:
+        return [], cfg
+
+    nproc_per_node = len(cfg.mi_parallel_gpus)
+    with open(fine_tuning_dir / "torchtune_config" / torchtune_config_name) as f:
+        base_batch_size = yaml.safe_load(f)["batch_size"]
+    per_gpu_batch_size = max(1, base_batch_size // nproc_per_node)
+    effective_batch_size = per_gpu_batch_size * nproc_per_node
+    print(
+        f"[distributed finetune] {torchtune_config_name}: nproc_per_node={nproc_per_node}, "
+        f"batch_size {base_batch_size} -> {per_gpu_batch_size}/device "
+        f"(effective global batch size {effective_batch_size})"
+    )
+    if effective_batch_size != base_batch_size:
+        print(
+            f"[distributed finetune] WARNING: batch_size={base_batch_size} isn't evenly "
+            f"divisible by nproc_per_node={nproc_per_node} -- effective global batch size "
+            f"{effective_batch_size} differs slightly from the single-GPU config's {base_batch_size}"
+        )
+
+    launch_cfg = dataclasses.replace(cfg, cuda_visible_devices=",".join(cfg.mi_parallel_gpus))
+    return [f"batch_size={per_gpu_batch_size}"], launch_cfg
 
 
 def _pad_to_size(init_path: Path, scores_path: Path, target_size: int) -> None:

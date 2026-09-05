@@ -1,0 +1,51 @@
+# Main experiment (paper-fidelity scale), matched-intervention (one-step BO)
+# ORPT-MI arm -- scaled up from peptide_poc20_orpt_mi.yaml, which validated
+# this whole pipeline (warm-worker pool, real one-step BO reliability
+# filter) at oracle_budget=5000/init_size=500/milestones up to 100. Real
+# per-candidate-pair cost there (with the warm pool + 8-GPU
+# mi_parallel_gpus): ~6s, full 11-milestone/555-cumulative-task-instance
+# schedule ~1.2-1.5 days.
+#
+# milestones: same revised 7-point, 900-task-pool schedule as
+# peptide_main_bolt.yaml (see that config's comment) -- cumulative
+# task-instances sum([126,252,378,504,630,756,900])=3546, ~6.4x PoC's 555.
+# Combined with init_size 500->1000 (background pool doubles -- real cost is
+# dominated by warm-pool/import overhead per the PoC session's own profiling,
+# not raw data size, so this is expected to be sub-linear, not a further 2x),
+# extrapolated (not freshly measured, per instruction) at ~8.9x PoC's real
+# cost: ~11-13.4 days, still 8-GPU parallel.
+#
+# Own experiment_id/run_dir -- independent trajectory chain from task 0, not
+# reusing peptide_main_bolt.yaml's chain (matched-intervention's own
+# self-reinforcing sampling genuinely diverges from milestone 1 onward, same
+# reasoning as every other ORPT arm in this repo). Runs concurrently with
+# peptide_main_bolt.yaml: mi_parallel_gpus uses all 8 GPUs regardless (BOLT's
+# own chain is lighter/intermittent and shares GPU headroom rather than
+# needing a dedicated reservation).
+#
+# No heldout_tasks_override: defaults to the real heldout20_tasks (900-919),
+# not the 5-task PoC subset -- only matters for the later eval sweep, not
+# this training chain (which only ever touches TRAIN_TASKS).
+experiment_id: peptide_main_orpt_mi
+milestones: [126, 252, 378, 504, 630, 756, 900]
+mi_parallel_gpus: ["0", "1", "2", "3", "4", "5", "6", "7"]
+cuda_visible_devices: "1"
+oracle_budget: 20000
+init_size: 1000
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+torchtune_config: poc_qwen_2_5_3B_lora_bsz32.yaml
+build_orpt: true
+orpt_epochs: 1
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_torchtune_config: poc_qwen_2_5_3B_lora_dpo_bsz32.yaml
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 8
+mi_tau_q: 1.0
+mi_z_min: 1.0
+mi_delta_t: 0.0
+mi_target_pairs_per_task: 10
+mi_max_candidates_per_task: 60
+mi_bo_steps: 1

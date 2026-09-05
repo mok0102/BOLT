@@ -12,7 +12,14 @@ from pathlib import Path
 
 from .config import ExperimentConfig
 from .orpt import train_orpt_milestone
-from .steps import _run, build_mutation_init, cleanup_intermediate_epochs, sample_and_build_init, run_bo
+from .steps import (
+    _run,
+    build_mutation_init,
+    cleanup_intermediate_epochs,
+    distributed_finetune_launch,
+    sample_and_build_init,
+    run_bo,
+)
 
 FINE_TUNING_DIR = "fine-tuning/peptides"
 
@@ -85,6 +92,8 @@ def train_milestone(cfg: ExperimentConfig, milestone: int) -> Path:
         cwd=fine_tuning_dir,
         cfg=cfg,
     )
+    extra_overrides, launch_cfg = distributed_finetune_launch(cfg, cfg.torchtune_config, fine_tuning_dir)
+    nproc_per_node = len(cfg.mi_parallel_gpus) if cfg.mi_parallel_gpus else 1
     _run(
         [
             "tune",
@@ -92,7 +101,7 @@ def train_milestone(cfg: ExperimentConfig, milestone: int) -> Path:
             "--nnodes",
             "1",
             "--nproc_per_node",
-            "1",
+            str(nproc_per_node),
             cfg.torchtune_recipe,
             "--config",
             f"torchtune_config/{cfg.torchtune_config}",
@@ -104,9 +113,10 @@ def train_milestone(cfg: ExperimentConfig, milestone: int) -> Path:
             f"epochs={cfg.sft_epochs}",
             "seed=42",
             f"metric_logger.log_dir={cfg.tensorboard_dir / f'BOLT-{milestone}'}",
+            *extra_overrides,
         ],
         cwd=fine_tuning_dir,
-        cfg=cfg,
+        cfg=launch_cfg,
     )
     if not final_ckpt.exists():
         raise RuntimeError(

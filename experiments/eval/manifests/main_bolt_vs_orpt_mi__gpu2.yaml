@@ -1,0 +1,21 @@
+# Milestone-group chunk 2 of main_bolt_vs_orpt_mi.yaml, for 8-way
+# parallel execution (pinned to GPU 2 via peptide_main_eval_gpu2.yaml).
+# Milestone in this chunk: 378. See main_bolt_vs_orpt_mi.yaml for the full
+# 4-arm x 7-milestone (+ gpu7's milestone-independent baselines) comparison
+# this was split from.
+models:
+- arm: BOLT
+  milestone: 378
+  run_dir: runs/peptide_main_bolt
+  checkpoint_dir: runs/peptide_main_bolt/checkpoints/BOLT-378/epoch_4
+- arm: ORPT-MI
+  milestone: 378
+  run_dir: runs/peptide_main_orpt_mi
+  checkpoint_dir: runs/peptide_main_orpt_mi/checkpoints/ORPT-378/epoch_0
+- arm: OptFormer
+  milestone: 378
+  run_dir: runs/peptide_main_bolt
+  checkpoint_dir: runs/peptide_main_bolt/checkpoints/OptFormer-378/epoch_0
+- arm: MTBO
+  milestone: 378
+  run_dir: runs/peptide_main_bolt

@@ -49,7 +49,7 @@ from plot_common import (
     style_axis,
 )
 
-TASK_SET_LABEL = {"heldout": "held-out peptides", "trainset": "trained peptides"}
+TASK_SET_LABEL = {"heldout": "held-out peptides (20)", "trainset": "trained peptides", "heldout100": "held-out peptides (100)"}
 
 
 def load_per_task(results_dirs: list[Path]) -> pd.DataFrame:
@@ -223,7 +223,11 @@ def main() -> None:
     plots_dir = resolve_out_dir(results_dirs, args.out_dir) / "plots"
     target = args.target if args.target is not None else (int(df["target_pool_size"].max()) if not df.empty else None)
 
-    for task_set in ("trainset", "heldout"):
+    # Derived from whatever's actually present in the loaded data, not a
+    # hardcoded ("trainset", "heldout") pair -- see the identical fix/comment
+    # in plot_incumbent_vs_pool_size.py.
+    present_task_sets = sorted(set(df["task_set"]) | set(coverage_df["task_set"]))
+    for task_set in present_task_sets:
         if target is not None:
             plot_fig1(
                 df, task_set,
