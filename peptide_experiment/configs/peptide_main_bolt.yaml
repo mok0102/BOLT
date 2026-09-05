@@ -46,7 +46,7 @@ build_optformer: true
 # this fix (torchtune's own resume_from_checkpoint: False means a partial
 # epoch_0 couldn't be resumed anyway) -- also keeps batch size consistent
 # with the ORPT-MI arm for a fair main-experiment comparison.
-torchtune_config: poc_qwen_2_5_3B_lora_bsz32.yaml
+torchtune_config: main_qwen_2_5_3B_lora_bsz32.yaml
 
 # cuda_visible_devices: check nvidia-smi fresh at launch time -- do not
 # assume "0" is still free (shared machine). Any single GPU is fine; this

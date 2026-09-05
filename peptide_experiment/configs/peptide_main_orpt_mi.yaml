@@ -35,12 +35,12 @@ init_size: 1000
 bsz: 50
 sft_epochs: 5
 similarity_threshold: 0.75
-torchtune_config: poc_qwen_2_5_3B_lora_bsz32.yaml
+torchtune_config: main_qwen_2_5_3B_lora_bsz32.yaml
 build_orpt: true
 orpt_epochs: 1
 orpt_beta: 0.25
 orpt_lr: 2.0e-5
-orpt_torchtune_config: poc_qwen_2_5_3B_lora_dpo_bsz32.yaml
+orpt_torchtune_config: main_qwen_2_5_3B_lora_dpo_bsz32.yaml
 orpt_pair_source: matched_intervention
 mi_num_backgrounds: 8
 mi_tau_q: 1.0
