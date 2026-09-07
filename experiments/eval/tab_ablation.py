@@ -6,32 +6,33 @@ results (arms BOLT/ORPT-H0/ORPT-H1, mapped via
 paper_labels.ABLATION_ARM_TO_SIGNAL). New label -- the tex's own
 commented-out table sketch doesn't define one.
 
-PREREQUISITE (as of this writing, verify before trusting the output): ORPT-H0
-(the zero-step ablation arm) has never been trained at any scale -- no
-checkpoint exists anywhere on disk. Someone must train it
-(peptide_experiment/configs/peptide_ablation_orpt_h0.yaml, mi_bo_steps=0) and
-ORPT-H1 (peptide_ablation_orpt_h1.yaml), then run, against
-manifests/ablation_h0_vs_h1.yaml:
+Full main-experiment scale (see paper_labels.ABLATION_SCALE_NOTE): BOLT and
+ORPT-H1 rows are the exact same checkpoints as the main results
+(runs/peptide_main_bolt_v2/runs/peptide_main_orpt_h1_v2) -- if the main
+experiment's own eval pipeline has already run, this script's BOLT/ORPT-H1
+numbers come for free (idempotent reuse). PREREQUISITE (as of this writing,
+verify before trusting the output): ORPT-H0 (the zero-step ablation arm) has
+never been trained at any scale -- no checkpoint exists anywhere on disk.
+Train it via experiments/eval/run_main_bolt_vs_orpt_train.sh
+(peptide_experiment/configs/peptide_ablation_orpt_h0.yaml, mi_bo_steps=0),
+then run, against manifests/ablation_h0_vs_h1.yaml:
     python experiments/eval/generate_raw_proposals.py --domain peptide \\
-        --config peptide_experiment/configs/peptide_ablation_orpt_h1.yaml \\
-        --manifest experiments/eval/manifests/ablation_h0_vs_h1.yaml --task-sets heldout
+        --config peptide_experiment/configs/peptide_ablation_orpt_h0.yaml \\
+        --manifest experiments/eval/manifests/ablation_h0_vs_h1.yaml --task-sets heldout100
     python experiments/eval/incumbent_vs_pool_size.py --domain peptide \\
-        --config peptide_experiment/configs/peptide_ablation_orpt_h1.yaml \\
-        --manifest experiments/eval/manifests/ablation_h0_vs_h1.yaml --task-sets heldout
+        --config peptide_experiment/configs/peptide_ablation_orpt_h0.yaml \\
+        --manifest experiments/eval/manifests/ablation_h0_vs_h1.yaml --task-sets heldout100
     python experiments/eval/fixed_target_rejection_bo.py --domain peptide \\
-        --config peptide_experiment/configs/peptide_ablation_orpt_h1.yaml \\
-        --manifest experiments/eval/manifests/ablation_h0_vs_h1.yaml --task-sets heldout
-before this script produces real numbers -- this is real training + compute
-work, not something this script can shortcut. (peptide_ablation_orpt_h1.yaml
-is used as the shared --config since its milestones/heldout_tasks_override/
-init_size/oracle_budget match peptide_ablation_orpt_h0.yaml and the existing
-runs/peptide_poc20_bolt_v2 checkpoints -- BOLT's config file itself was
-removed as stale, but its already-trained checkpoints on disk are still
-reused directly via the manifest's run_dir/checkpoint_dir -- by construction.)
+        --config peptide_experiment/configs/peptide_ablation_orpt_h0.yaml \\
+        --manifest experiments/eval/manifests/ablation_h0_vs_h1.yaml --task-sets heldout100
+before this script produces real ORPT-H0 numbers -- this is real training +
+compute work, not something this script can shortcut. (Any one of the three
+configs in the manifest works as the shared --config here -- they all agree
+on milestones/init_size/oracle_budget by construction.)
 
 Usage (run from the BOLT repo root):
     python experiments/eval/tab_ablation.py \\
-        --config peptide_experiment/configs/peptide_ablation_orpt_h1.yaml \\
+        --config peptide_experiment/configs/peptide_main_bolt_v2.yaml \\
         --results-dir experiments/eval/results/ablation_h0_vs_h1
 """
 
@@ -99,7 +100,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
     parser.add_argument("--results-dir", required=True, help="Comma-separated list of results dirs")
-    parser.add_argument("--task-set", default="heldout")
+    parser.add_argument("--task-set", default="heldout100")
     parser.add_argument("--milestone", type=int, default=None, help="Reference milestone (default: max(cfg.milestones))")
     parser.add_argument("--out-dir", default=None, help="Default: experiments/eval/results/tab_ablation")
     args = parser.parse_args()

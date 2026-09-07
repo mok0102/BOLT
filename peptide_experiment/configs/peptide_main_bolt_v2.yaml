@@ -8,14 +8,18 @@
 # already-completed [126..900] run and its results/ aren't orphaned.
 #
 # Also the shared run_dir any MTBO-<m>/OptFormer-<m>/GP-expert-transfer
-# baselines for this schedule would be trained into (see
-# peptide_experiment/{mtbo,optformer,gp_expert_transfer}.py) -- none of that
-# training has happened yet either; experiments/eval/manifests/
-# main_v2_orpt_vs_bolt.yaml lists those rows commented out until it does.
+# baselines for this schedule are trained into (see
+# peptide_experiment/{mtbo,optformer,gp_expert_transfer}.py, run via
+# experiments/eval/run_main_baselines_train.sh after this config's own
+# trajectory_chain completes -- see that script for why the ordering
+# matters).
 #
-# oracle_budget/init_size/bsz/sft_epochs/similarity_threshold/torchtune_config
+# torchtune_config bumped to the rank=16 variant (was rank=4, matching
+# peptide_main_bolt.yaml/the old [126..900] run) -- see
+# main_qwen_2_5_3B_lora_bsz32_rank16.yaml's own comment for why. Every other
+# field (oracle_budget/init_size/bsz/sft_epochs/similarity_threshold)
 # unchanged from peptide_main_bolt.yaml (same paper-fidelity scale, only the
-# milestone schedule and reported k-checkpoints differ).
+# milestone schedule, torchtune rank, and reported k-checkpoints differ).
 experiment_id: peptide_main_bolt_v2
 milestones: [10, 20, 50, 250, 400, 500, 600]
 oracle_budget: 20000
@@ -26,7 +30,7 @@ similarity_threshold: 0.75
 build_orpt: false
 build_mtbo: true
 build_optformer: true
-torchtune_config: main_qwen_2_5_3B_lora_bsz32.yaml
+torchtune_config: main_qwen_2_5_3B_lora_bsz32_rank16.yaml
 
 # Few-shot/init-only reporting checkpoints for this round (paper's fig:fewshot
 # few-shot-proposal-quality axis and fig:scaling's init-only panel) -- given

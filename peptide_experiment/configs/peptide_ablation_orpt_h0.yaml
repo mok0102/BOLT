@@ -1,5 +1,5 @@
 # Ablation Study (paper/experiments.tex sec:ablations), "Zero-step outcome
-# ranking" arm -- identical to peptide_ablation_orpt_h1.yaml except
+# ranking" arm -- identical to peptide_main_orpt_h1_v2.yaml except
 # mi_bo_steps=0, the literal zero-step ablation
 # peptide_experiment/mi_orpt/pair_construction.py already implements ("the
 # free zero-step ablation", its own comment): pairs are labeled by
@@ -7,31 +7,48 @@
 # own best-known value and the candidate's value), no real one-step BO call,
 # no additional oracle cost -- see paper/method.tex's U_0(C,S) equation.
 #
+# Full main-v2 scale (not a separate PoC-sized ablation): same milestones,
+# oracle_budget, init_size, and (critically) mi_target_pairs_per_task/
+# mi_max_candidates_per_task as peptide_main_orpt_h1_v2.yaml -- must match
+# exactly, otherwise H0 vs. H1 wouldn't be a controlled comparison (differing
+# pair-construction budgets would confound the zero-step-vs-one-step signal
+# the ablation is meant to isolate). No heldout_tasks_override: uses the real
+# 20-/100-task heldout sets, same as the main experiment, so this arm's
+# eval work (experiments/eval/manifests/ablation_h0_vs_h1.yaml) is directly
+# comparable to -- and BOLT/ORPT-H1's rows are directly reused from --
+# the main experiment's own eval run.
+#
 # Has never been trained at any scale before this config (confirmed: no
 # zero-step/H0 checkpoint exists anywhere on disk) -- this is real training
-# work, not yet done. Verify runs/peptide_ablation_orpt_h0/checkpoints/
-# ORPT-<m> exists before assuming otherwise.
+# work, not yet done. Train via
+# experiments/eval/run_main_bolt_vs_orpt_train.sh (after
+# peptide_main_bolt_v2.yaml/peptide_main_orpt_h1_v2.yaml's own trajectory
+# chains complete, to free up the shared 8-GPU pool). Verify
+# runs/peptide_ablation_orpt_h0/checkpoints/ORPT-<m> exists before assuming
+# otherwise.
 experiment_id: peptide_ablation_orpt_h0
-milestones: [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+milestones: [10, 20, 50, 250, 400, 500, 600]
 mi_parallel_gpus: ["0", "1", "2", "3", "4", "5", "6", "7"]
 cuda_visible_devices: null
-oracle_budget: 5000
-init_size: 500
+oracle_budget: 20000
+init_size: 1000
 bsz: 50
 sft_epochs: 5
 similarity_threshold: 0.75
-heldout_tasks_override: [900, 901, 902, 903, 904]
-torchtune_config: poc_qwen_2_5_3B_lora_bsz32.yaml
+torchtune_config: main_qwen_2_5_3B_lora_bsz32_rank16.yaml
 build_orpt: true
 orpt_epochs: 1
 orpt_beta: 0.25
 orpt_lr: 2.0e-5
-orpt_torchtune_config: poc_qwen_2_5_3B_lora_dpo_bsz32.yaml
+orpt_torchtune_config: main_qwen_2_5_3B_lora_dpo_bsz32_rank16.yaml
 orpt_pair_source: matched_intervention
 mi_num_backgrounds: 8
 mi_tau_q: 1.0
 mi_z_min: 1.0
 mi_delta_t: 0.0
-mi_target_pairs_per_task: 1000
-mi_max_candidates_per_task: 100
+mi_target_pairs_per_task: 10
+mi_max_candidates_per_task: 60
 mi_bo_steps: 0
+
+# See peptide_main_bolt_v2.yaml's identical comment.
+table_k_checkpoints: [20, 50, 100, 200, 500, 1000]

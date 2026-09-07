@@ -1,8 +1,6 @@
 # Milestone-group chunk 0 of main_v2_orpt_vs_bolt.yaml, for parallel
 # execution across free GPUs. Milestone in this chunk: 10. See
-# main_v2_orpt_vs_bolt.yaml for the full comparison this was split from, and
-# for why MTBO/OptFormer/POGPE/SGPE/LLAMBO rows aren't included here yet
-# (not trained at this schedule).
+# main_v2_orpt_vs_bolt.yaml for the full comparison this was split from.
 models:
 - arm: BOLT
   milestone: 10
@@ -12,3 +10,10 @@ models:
   milestone: 10
   run_dir: runs/peptide_main_orpt_h1_v2
   checkpoint_dir: runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-10/epoch_0
+- arm: OptFormer
+  milestone: 10
+  run_dir: runs/peptide_main_bolt_v2
+  checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/OptFormer-10/epoch_0
+- arm: MTBO
+  milestone: 10
+  run_dir: runs/peptide_main_bolt_v2

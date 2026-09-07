@@ -17,10 +17,13 @@
 # diverges from milestone 1 onward, same reasoning as every other ORPT arm in
 # this repo).
 #
-# oracle_budget/init_size/bsz/sft_epochs/similarity_threshold/torchtune_config
-# and every orpt_*/mi_* hyperparameter unchanged from peptide_main_orpt_mi.yaml
+# oracle_budget/init_size/bsz/sft_epochs/similarity_threshold and every
+# orpt_*/mi_* hyperparameter unchanged from peptide_main_orpt_mi.yaml
 # (beta=0.25/lr=2e-5, the grid-search-selected values -- see project notes) --
-# only the milestone schedule and reported k-checkpoints differ.
+# the milestone schedule, torchtune rank (bumped to 16, see
+# main_qwen_2_5_3B_lora_bsz32_rank16.yaml's own comment), and reported
+# k-checkpoints differ. Train via experiments/eval/run_main_bolt_vs_orpt_train.sh
+# (concurrently with peptide_main_bolt_v2.yaml).
 experiment_id: peptide_main_orpt_h1_v2
 milestones: [10, 20, 50, 250, 400, 500, 600]
 mi_parallel_gpus: ["0", "1", "2", "3", "4", "5", "6", "7"]
@@ -30,12 +33,12 @@ init_size: 1000
 bsz: 50
 sft_epochs: 5
 similarity_threshold: 0.75
-torchtune_config: main_qwen_2_5_3B_lora_bsz32.yaml
+torchtune_config: main_qwen_2_5_3B_lora_bsz32_rank16.yaml
 build_orpt: true
 orpt_epochs: 1
 orpt_beta: 0.25
 orpt_lr: 2.0e-5
-orpt_torchtune_config: main_qwen_2_5_3B_lora_dpo_bsz32.yaml
+orpt_torchtune_config: main_qwen_2_5_3B_lora_dpo_bsz32_rank16.yaml
 orpt_pair_source: matched_intervention
 mi_num_backgrounds: 8
 mi_tau_q: 1.0

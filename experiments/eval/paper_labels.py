@@ -47,7 +47,12 @@ ABLATION_ARM_TO_SIGNAL = {
 ABLATION_ROW_ORDER = ["Supervised proposal", "Zero-step outcome ranking", "One-step outcome ranking"]
 
 ABLATION_SCALE_NOTE = (
-    "PoC-scale data (runs/peptide_poc20_bolt_v2, runs/peptide_ablation_orpt_h0, "
-    "runs/peptide_ablation_orpt_h1; 5-task heldout_tasks_override) -- not the "
-    "paper-fidelity main-scale run."
+    "Full main-experiment scale (not a separate PoC-sized run): Supervised "
+    "proposal/One-step outcome ranking are runs/peptide_main_bolt_v2 and "
+    "runs/peptide_main_orpt_h1_v2 -- the exact same checkpoints as the main "
+    "results -- shared verbatim with this ablation. Only Zero-step outcome "
+    "ranking (runs/peptide_ablation_orpt_h0) is a dedicated ablation-only "
+    "training run, matched to peptide_main_orpt_h1_v2's pair-construction "
+    "budget (mi_target_pairs_per_task/mi_max_candidates_per_task) for a "
+    "controlled comparison."
 )
