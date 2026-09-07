@@ -20,7 +20,7 @@ task-aggregated there.
 
 Usage (run from the BOLT repo root):
     python experiments/eval/plot_incumbent_vs_pool_size.py \\
-        --results-dir experiments/eval/results/poc20_four_arm
+        --results-dir experiments/eval/results/main_bolt_vs_orpt_mi__gpu0
 """
 
 from __future__ import annotations

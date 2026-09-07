@@ -1,0 +1,49 @@
+# Main experiment (paper-fidelity scale), matched-intervention one-step-BO
+# ORPT arm -- v2 milestone schedule (see peptide_main_bolt_v2.yaml's comment
+# for why a new experiment_id/run_dir rather than editing
+# peptide_main_orpt_mi.yaml in place). Named "orpt_h1" (not "orpt_mi") to
+# carry method.tex's own H (horizon) notation in the arm identifier itself:
+# mi_bo_steps=1 is the paper's real one-step outcome-ranking method (H=1),
+# as opposed to peptide_ablation_orpt_h0.yaml's mi_bo_steps=0 zero-step
+# ablation arm (H=0). Both display as the paper's "ORPT" in any paper-facing
+# figure/table (see experiments/eval/paper_labels.py) -- this is purely an
+# internal/checkpoint-identifier naming choice, not a change to what the
+# method actually is.
+#
+# Not yet trained anywhere -- verify checkpoints exist under
+# runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-<m> before assuming this
+# schedule has run. Own experiment_id/run_dir -- independent trajectory chain
+# from task 0 (matched-intervention's self-reinforcing sampling genuinely
+# diverges from milestone 1 onward, same reasoning as every other ORPT arm in
+# this repo).
+#
+# oracle_budget/init_size/bsz/sft_epochs/similarity_threshold/torchtune_config
+# and every orpt_*/mi_* hyperparameter unchanged from peptide_main_orpt_mi.yaml
+# (beta=0.25/lr=2e-5, the grid-search-selected values -- see project notes) --
+# only the milestone schedule and reported k-checkpoints differ.
+experiment_id: peptide_main_orpt_h1_v2
+milestones: [10, 20, 50, 250, 400, 500, 600]
+mi_parallel_gpus: ["0", "1", "2", "3", "4", "5", "6", "7"]
+cuda_visible_devices: null
+oracle_budget: 20000
+init_size: 1000
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+torchtune_config: main_qwen_2_5_3B_lora_bsz32.yaml
+build_orpt: true
+orpt_epochs: 1
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_torchtune_config: main_qwen_2_5_3B_lora_dpo_bsz32.yaml
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 8
+mi_tau_q: 1.0
+mi_z_min: 1.0
+mi_delta_t: 0.0
+mi_target_pairs_per_task: 10
+mi_max_candidates_per_task: 60
+mi_bo_steps: 1
+
+# See peptide_main_bolt_v2.yaml's identical comment.
+table_k_checkpoints: [20, 50, 100, 200, 500, 1000]

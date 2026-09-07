@@ -1,0 +1,156 @@
+# BOLT vs ORPT-H1 vs baselines, main-experiment (paper-fidelity) scale, v2
+# milestone schedule [10,20,50,250,400,500,600] -- supersedes
+# main_bolt_vs_orpt_mi.yaml's [126,252,378,504,630,756,900] schedule for this
+# round (see peptide_main_bolt_v2.yaml/peptide_main_orpt_h1_v2.yaml's own
+# comments for why a new experiment_id/run_dir rather than editing the old
+# manifest in place). Neither run_dir has been trained yet as of this
+# writing -- verify runs/peptide_main_bolt_v2/checkpoints/BOLT-<m> and
+# runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-<m> exist before assuming
+# otherwise.
+#
+# Arm name ORPT-H1 (not ORPT-MI, per this session's H-notation-consistent
+# naming convention -- see peptide_main_orpt_h1_v2.yaml's comment). Displays
+# as the paper's "ORPT" in any paper-facing figure/table (see
+# experiments/eval/paper_labels.py) -- this is purely an internal/checkpoint
+# identifier choice, not a change to what the method is.
+#
+# task_set "heldout100" (100-task held-out set) for both the
+# incumbent-vs-pool-size and fixed-target-BO analyses, same deliberate choice
+# main_bolt_vs_orpt_mi.yaml's own comment documents (not the paper's own
+# literal Table-11-vs-Figure-1/2 20-vs-100 split).
+#
+# STBO included active (self-seeding, no checkpoint needed, milestone is an
+# arbitrary unused placeholder like LLAMBO's own row below -- see
+# fixed_target_rejection_bo.py's STBO branch). MTBO/OptFormer/POGPE/SGPE/
+# LLAMBO rows are sketched below, commented out, ready to uncomment once/if
+# those baselines are (re-)trained at this schedule.
+models:
+  - arm: BOLT
+    milestone: 10
+    run_dir: runs/peptide_main_bolt_v2
+    checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/BOLT-10/epoch_4
+  - arm: BOLT
+    milestone: 20
+    run_dir: runs/peptide_main_bolt_v2
+    checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/BOLT-20/epoch_4
+  - arm: BOLT
+    milestone: 50
+    run_dir: runs/peptide_main_bolt_v2
+    checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/BOLT-50/epoch_4
+  - arm: BOLT
+    milestone: 250
+    run_dir: runs/peptide_main_bolt_v2
+    checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/BOLT-250/epoch_4
+  - arm: BOLT
+    milestone: 400
+    run_dir: runs/peptide_main_bolt_v2
+    checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/BOLT-400/epoch_4
+  - arm: BOLT
+    milestone: 500
+    run_dir: runs/peptide_main_bolt_v2
+    checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/BOLT-500/epoch_4
+  - arm: BOLT
+    milestone: 600
+    run_dir: runs/peptide_main_bolt_v2
+    checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/BOLT-600/epoch_4
+  - arm: ORPT-H1
+    milestone: 10
+    run_dir: runs/peptide_main_orpt_h1_v2
+    checkpoint_dir: runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-10/epoch_0
+  - arm: ORPT-H1
+    milestone: 20
+    run_dir: runs/peptide_main_orpt_h1_v2
+    checkpoint_dir: runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-20/epoch_0
+  - arm: ORPT-H1
+    milestone: 50
+    run_dir: runs/peptide_main_orpt_h1_v2
+    checkpoint_dir: runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-50/epoch_0
+  - arm: ORPT-H1
+    milestone: 250
+    run_dir: runs/peptide_main_orpt_h1_v2
+    checkpoint_dir: runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-250/epoch_0
+  - arm: ORPT-H1
+    milestone: 400
+    run_dir: runs/peptide_main_orpt_h1_v2
+    checkpoint_dir: runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-400/epoch_0
+  - arm: ORPT-H1
+    milestone: 500
+    run_dir: runs/peptide_main_orpt_h1_v2
+    checkpoint_dir: runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-500/epoch_0
+  - arm: ORPT-H1
+    milestone: 600
+    run_dir: runs/peptide_main_orpt_h1_v2
+    checkpoint_dir: runs/peptide_main_orpt_h1_v2/checkpoints/ORPT-600/epoch_0
+  - arm: STBO
+    milestone: 0
+    run_dir: runs/peptide_main_bolt_v2
+  # - arm: OptFormer
+  #   milestone: 10
+  #   run_dir: runs/peptide_main_bolt_v2
+  #   checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/OptFormer-10/epoch_0
+  # - arm: OptFormer
+  #   milestone: 20
+  #   run_dir: runs/peptide_main_bolt_v2
+  #   checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/OptFormer-20/epoch_0
+  # - arm: OptFormer
+  #   milestone: 50
+  #   run_dir: runs/peptide_main_bolt_v2
+  #   checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/OptFormer-50/epoch_0
+  # - arm: OptFormer
+  #   milestone: 250
+  #   run_dir: runs/peptide_main_bolt_v2
+  #   checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/OptFormer-250/epoch_0
+  # - arm: OptFormer
+  #   milestone: 400
+  #   run_dir: runs/peptide_main_bolt_v2
+  #   checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/OptFormer-400/epoch_0
+  # - arm: OptFormer
+  #   milestone: 500
+  #   run_dir: runs/peptide_main_bolt_v2
+  #   checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/OptFormer-500/epoch_0
+  # - arm: OptFormer
+  #   milestone: 600
+  #   run_dir: runs/peptide_main_bolt_v2
+  #   checkpoint_dir: runs/peptide_main_bolt_v2/checkpoints/OptFormer-600/epoch_0
+  # - arm: MTBO
+  #   milestone: 10
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: MTBO
+  #   milestone: 20
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: MTBO
+  #   milestone: 50
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: MTBO
+  #   milestone: 250
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: MTBO
+  #   milestone: 400
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: MTBO
+  #   milestone: 500
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: MTBO
+  #   milestone: 600
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: POGPE
+  #   milestone: 5
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: POGPE
+  #   milestone: 10
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: POGPE
+  #   milestone: 20
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: SGPE
+  #   milestone: 5
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: SGPE
+  #   milestone: 10
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: SGPE
+  #   milestone: 20
+  #   run_dir: runs/peptide_main_bolt_v2
+  # - arm: LLAMBO
+  #   milestone: 0
+  #   run_dir: runs/peptide_main_bolt_v2

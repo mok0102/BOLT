@@ -1,0 +1,48 @@
+# Query-plan domain, milestones [50,893,1138,1426] (matches
+# query_plan_experiment/configs/query_plan_main.yaml, experiment_id
+# query_plan_main_v1). BOLT rows only for now -- query_plan_experiment has no
+# ORPT/DPO training pipeline at all yet (no orpt.py analog, no build_orpt
+# flag), so the query-plan panel of fig:main-bo/fig:scaling/
+# tab:main-bo-summary cannot show an ORPT curve until that trainer is built.
+# ORPT-H1 rows are sketched below, commented out, ready to uncomment once
+# that pipeline and its checkpoints exist -- no other change should be
+# needed, since experiments/eval/domains.py's query_plan adapter is already
+# generic over arm name.
+#
+# No query_plan training has happened at all yet (no runs/query_plan_main_v1
+# directory on disk as of this writing) -- run
+# `python -m query_plan_experiment.cli trajectory_chain --config
+# query_plan_experiment/configs/query_plan_main.yaml` first.
+models:
+  - arm: BOLT
+    milestone: 50
+    run_dir: runs/query_plan_main_v1
+    checkpoint_dir: runs/query_plan_main_v1/checkpoints/BOLT-50/epoch_0
+  - arm: BOLT
+    milestone: 893
+    run_dir: runs/query_plan_main_v1
+    checkpoint_dir: runs/query_plan_main_v1/checkpoints/BOLT-893/epoch_0
+  - arm: BOLT
+    milestone: 1138
+    run_dir: runs/query_plan_main_v1
+    checkpoint_dir: runs/query_plan_main_v1/checkpoints/BOLT-1138/epoch_0
+  - arm: BOLT
+    milestone: 1426
+    run_dir: runs/query_plan_main_v1
+    checkpoint_dir: runs/query_plan_main_v1/checkpoints/BOLT-1426/epoch_0
+  # - arm: ORPT-H1
+  #   milestone: 50
+  #   run_dir: runs/query_plan_main_orpt_h1_v1
+  #   checkpoint_dir: runs/query_plan_main_orpt_h1_v1/checkpoints/ORPT-50/epoch_0
+  # - arm: ORPT-H1
+  #   milestone: 893
+  #   run_dir: runs/query_plan_main_orpt_h1_v1
+  #   checkpoint_dir: runs/query_plan_main_orpt_h1_v1/checkpoints/ORPT-893/epoch_0
+  # - arm: ORPT-H1
+  #   milestone: 1138
+  #   run_dir: runs/query_plan_main_orpt_h1_v1
+  #   checkpoint_dir: runs/query_plan_main_orpt_h1_v1/checkpoints/ORPT-1138/epoch_0
+  # - arm: ORPT-H1
+  #   milestone: 1426
+  #   run_dir: runs/query_plan_main_orpt_h1_v1
+  #   checkpoint_dir: runs/query_plan_main_orpt_h1_v1/checkpoints/ORPT-1426/epoch_0

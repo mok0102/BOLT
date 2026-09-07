@@ -25,7 +25,7 @@ def _arms(cfg: ExperimentConfig) -> list[str]:
     return [f"BOLT-{m}" for m in cfg.milestones]
 
 
-def _best_runtime_at_k(csv_path, init_size: int, k: int) -> float | None:
+def best_runtime_at_k(csv_path, init_size: int, k: int) -> float | None:
     """Best (lowest) completed runtime among the first init_size+k logged
     rows. train_y is already -runtime (maximization framing); reported here
     as a positive runtime (lower = better), mirroring peptide's own
@@ -51,7 +51,7 @@ def _sum_runtime_across_tasks(cfg: ExperimentConfig, arm: str, k: int) -> tuple[
         if not csv_path.exists():
             n_missing += 1
             continue
-        runtime = _best_runtime_at_k(csv_path, cfg.init_size, k)
+        runtime = best_runtime_at_k(csv_path, cfg.init_size, k)
         if runtime is not None:
             total += runtime
         else:

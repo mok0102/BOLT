@@ -1,70 +1,27 @@
 """Shared, self-contained helpers for experiments/eval/.
 
-Deliberately independent of experiments/constraint_violation/ (no imports
-from it) -- eval/ is a fresh package built directly on the core
-peptide_experiment/apex_oracle pipeline, not on constraint_violation/'s
-extensions. Some small pieces below (similarity(), load_raw_generations())
-are equivalent in spirit to functions already proven out in
-constraint_violation/measure_violation_rate.py, reimplemented here rather
-than imported.
+Domain-generic (see domains.py) -- everything here takes a Domain instance
+rather than assuming peptide_experiment/apex_oracle specifically. Deliberately
+independent of experiments/constraint_violation/ (no imports from it, and
+that directory has since been removed).
 
 Model identity in this package is a manifest entry -- (arm, milestone,
-run_dir[, checkpoint_dir]) -- not the (cfg, arm-literal) resolution
-constraint_violation/ uses, so a comparison can freely span models trained
-under different experiment_id/run_dir trees (e.g. BOLT from one PoC config,
-ORPT-FA from another).
+run_dir[, checkpoint_dir]) -- not a (cfg, arm-literal) resolution, so a
+comparison can freely span models trained under different
+experiment_id/run_dir trees (e.g. BOLT from one config, ORPT-H1 from another).
 """
 
 from __future__ import annotations
 
 import csv
-import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
+from domains import BuiltPool, Domain
+
 BOLT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(BOLT_ROOT))
-sys.path.insert(0, str(BOLT_ROOT / "fine-tuning" / "peptides" / "sampled_output_from_ft"))
-
-from peptide_experiment.config import ExperimentConfig  # noqa: E402
-from apex_oracle.refseqs import REFERENCE_SEQUENCE  # noqa: E402
-from make_initialization_data import extract_sequence  # noqa: E402
-from Levenshtein import distance as edit_distance  # noqa: E402
-
-TASK_SETS = ("trainset", "heldout", "heldout100")
-
-
-def similarity(seq: str, reference: str) -> float:
-    """Same edit-distance-based formula as
-    peptide_experiment/steps.py::_ensure_constraint_feasible."""
-    length = len(reference)
-    return (length - edit_distance(seq, reference)) / length
-
-
-def load_raw_generations(task_dir: Path, task_idx: int) -> list[str]:
-    """Raw, order-preserved, non-deduped sequences from every
-    task_<idx>_sampled_attempt*.jsonl in task_dir, in attempt order."""
-    attempt_files = sorted(
-        task_dir.glob(f"task_{task_idx:04d}_sampled_attempt*.jsonl"),
-        key=lambda p: int(p.stem.rsplit("attempt", 1)[1]),
-    )
-    sequences: list[str] = []
-    for f in attempt_files:
-        for line in f.read_text().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            record = json.loads(line)
-            for answer in record.get("generated_answers", []):
-                if answer is None:
-                    continue
-                seq = extract_sequence(str(answer))
-                if seq:
-                    sequences.append(seq)
-    return sequences
 
 
 @dataclass
@@ -106,71 +63,59 @@ def load_manifest(path: Path) -> list[ModelSpec]:
 
 def raw_dir_for(spec: ModelSpec, task_set: str) -> Path:
     """eval/'s own raw-generation directory convention -- parallel to, but
-    independent of, constraint_violation/'s trainset_eval/heldout20/init_only
-    naming, so the two pipelines never share or collide on output."""
-    assert task_set in TASK_SETS, f"unknown task_set {task_set!r}, expected one of {TASK_SETS}"
+    independent of, the now-removed constraint_violation/'s trainset_eval/
+    heldout20/init_only naming. Validity of task_set itself is the calling
+    domain's responsibility (Domain.task_indices raises on an unknown one)."""
     return spec.run_dir / "eval_raw" / task_set / f"{spec.arm}-{spec.milestone}"
 
 
-def task_indices(cfg: ExperimentConfig, task_set: str) -> list[int]:
-    """trainset: the fixed subset every milestone's checkpoint has already
-    been trained on (range(min(milestones))) -- apples-to-apples across
-    milestones, distinct from cfg.train_task_range()'s full cumulative
-    max(milestones) range. heldout: cfg's 20-task held-out list (respects
-    heldout_tasks_override, e.g. the 5-task PoC subset). heldout100: cfg's
-    full 100-task held-out list (paper's Figure 1/2 task universe) -- added
-    for the main-scale BOLT-vs-ORPT-MI comparison, which deliberately uses
-    100 held-out tasks for both the incumbent-vs-pool-size and fixed-target
-    analyses (a user choice, not the paper's own literal Table-11-vs-Figure-
-    1/2 20-vs-100 split); every existing caller passing "heldout"/"trainset"
-    is unaffected."""
-    if task_set == "trainset":
-        return list(range(min(cfg.milestones)))
-    if task_set == "heldout":
-        return list(cfg.heldout_tasks("heldout20"))
-    if task_set == "heldout100":
-        return list(cfg.heldout_tasks("heldout100"))
-    raise ValueError(f"unknown task_set {task_set!r}, expected one of {TASK_SETS}")
-
-
 def feasible_pool_with_draw_counts(
-    cfg: ExperimentConfig,
-    task_idx: int,
+    domain: Domain,
+    cfg,
+    task_id,
     raw_dir: Path,
     max_needed: int | None = None,
-) -> list[tuple[str, int]]:
-    """One pass over load_raw_generations(): dedup + similarity-filter,
-    returning (sequence, 1-indexed draw_index) for each accepted sequence,
-    stopping early once max_needed are collected (None = collect all)."""
-    reference = REFERENCE_SEQUENCE[task_idx]
-    sequences = load_raw_generations(raw_dir, task_idx)
-    pool: list[tuple[str, int]] = []
-    seen: set[str] = set()
-    for draw_idx, seq in enumerate(sequences, start=1):
-        if seq in seen:
+) -> list[tuple]:
+    """One pass over domain.load_raw_candidates(): dedup (domain.dedup_key)
+    + feasibility-filter (domain.is_feasible -- always True for query_plan,
+    since that domain has no pre-oracle constraint), returning (candidate,
+    1-indexed draw_index) for each accepted candidate, stopping early once
+    max_needed are collected (None = collect all)."""
+    candidates = domain.load_raw_candidates(raw_dir, task_id)
+    pool: list[tuple] = []
+    seen: set = set()
+    for draw_idx, candidate in enumerate(candidates, start=1):
+        key = domain.dedup_key(candidate)
+        if key in seen:
             continue
-        seen.add(seq)
-        if similarity(seq, reference) >= cfg.similarity_threshold:
-            pool.append((seq, draw_idx))
+        seen.add(key)
+        if domain.is_feasible(cfg, task_id, candidate):
+            pool.append((candidate, draw_idx))
             if max_needed is not None and len(pool) >= max_needed:
                 break
     return pool
 
 
-def bo_k_checkpoints(cfg: ExperimentConfig) -> list[int]:
+def bo_k_checkpoints(cfg) -> list[int]:
     """Oracle-call checkpoints at which to report BO performance -- cfg's
-    table_k_checkpoints plus the full oracle_budget itself."""
-    return sorted(set(cfg.table_k_checkpoints) | {cfg.oracle_budget})
+    table_k_checkpoints plus the full oracle_budget itself. table_k_checkpoints
+    may be None (query_plan's own default) -- treated as empty rather than
+    erroring, matching query_plan_experiment/aggregate.py's own fallback."""
+    return sorted(set(cfg.table_k_checkpoints or []) | {cfg.oracle_budget})
 
 
 def read_pool_size(bo_dir: Path, task_idx: int) -> int:
+    """Peptide-only (used by the MTBO/POGPE/SGPE baseline branches in
+    fixed_target_rejection_bo.py, which self-seed via build_mutation_init --
+    no query_plan analog exists yet)."""
     path = bo_dir / f"task_{task_idx:04d}_init.txt"
     return sum(1 for line in path.read_text().splitlines() if line.strip())
 
 
 def read_best_feasible_incumbent(bo_dir: Path, task_idx: int) -> float | None:
     """Best (lowest) MIC among the built init pool itself, i.e. the
-    generation-time incumbent before any BO acquisition."""
+    generation-time incumbent before any BO acquisition. Peptide-only, same
+    reason as read_pool_size."""
     path = bo_dir / f"task_{task_idx:04d}_scores.csv"
     if not path.exists():
         return None
@@ -179,55 +124,51 @@ def read_best_feasible_incumbent(bo_dir: Path, task_idx: int) -> float | None:
 
 
 def build_bo_pool(
-    cfg: ExperimentConfig,
-    task_idx: int,
+    domain: Domain,
+    cfg,
+    task_id,
     raw_dir: Path,
     work_dir: Path,
     target: int | None = None,
     min_feasible: int = 5,
-) -> tuple[Path, Path, int, int] | None:
+) -> BuiltPool | None:
     """Build a BO init pool from raw generations, real rejection sampling
-    only (no synthetic top-up/padding). Idempotent on existing
-    task_XXXX_init.txt/_scores.csv in work_dir (draws_used is still
-    recomputed on the idempotent path -- it's a cheap raw-jsonl rescan, no
-    apex_wrapper call).
+    only (no synthetic top-up/padding). Idempotent on an existing init pool
+    in work_dir (domain.read_existing_pool) -- draws_used is still
+    recomputed on the idempotent path, a cheap raw-generations rescan, no
+    oracle call.
 
     target=None: use the full real-rejection-sampled feasible pool, skip if
     fewer than min_feasible survive (the "fixed budget" mode). draws_used is
-    every raw sequence generated (the whole sampling budget was consumed).
-    target=<int>: require exactly `target` feasible unique sequences, skip
+    every raw candidate generated (the whole sampling budget was consumed).
+    target=<int>: require exactly `target` feasible unique candidates, skip
     (return None) if fewer are available -- no on-demand extra sampling (the
     "fixed target" mode). draws_used is the raw draw index at which the
-    `target`-th feasible sequence appeared.
+    `target`-th feasible candidate appeared.
 
-    Returns (init_path, scores_path, pool_size, draws_used); rejection_rate
+    Returns a BuiltPool (pool_size, draws_used, run_bo_kwargs); rejection_rate
     = 1 - pool_size / draws_used is left to callers (they already vary in
     what else they log alongside it).
     """
-    from apex_oracle import apex_wrapper
-
-    init_path = work_dir / f"task_{task_idx:04d}_init.txt"
-    scores_path = work_dir / f"task_{task_idx:04d}_scores.csv"
-
-    pool = feasible_pool_with_draw_counts(cfg, task_idx, raw_dir, max_needed=target)
-    seqs = [s for s, _ in pool]
+    pool = feasible_pool_with_draw_counts(domain, cfg, task_id, raw_dir, max_needed=target)
+    candidates = [c for c, _ in pool]
     floor = target if target is not None else min_feasible
-    if len(seqs) < floor:
+    if len(candidates) < floor:
         return None
     if target is not None:
-        seqs = seqs[:target]
+        candidates = candidates[:target]
         draws_used = pool[target - 1][1]
     else:
-        draws_used = len(load_raw_generations(raw_dir, task_idx))
+        draws_used = len(domain.load_raw_candidates(raw_dir, task_id))
 
-    if init_path.exists() and scores_path.exists():
-        return init_path, scores_path, read_pool_size(work_dir, task_idx), draws_used
+    existing = domain.read_existing_pool(work_dir, task_id)
+    if existing is not None:
+        pool_size, run_bo_kwargs = existing
+        return BuiltPool(pool_size=pool_size, draws_used=draws_used, run_bo_kwargs=run_bo_kwargs)
 
-    scores = list(-apex_wrapper(seqs)[:, 0])
-    work_dir.mkdir(parents=True, exist_ok=True)
-    init_path.write_text("\n".join(seqs) + "\n")
-    scores_path.write_text("\n".join(f"{s:.8f}" for s in scores) + "\n")
-    return init_path, scores_path, len(seqs), draws_used
+    scored = domain.score_candidates(cfg, task_id, candidates)
+    run_bo_kwargs = domain.write_init_pool(work_dir, task_id, scored)
+    return BuiltPool(pool_size=len(scored), draws_used=draws_used, run_bo_kwargs=run_bo_kwargs)
 
 
 def write_csv(rows: list[dict], path: Path, fieldnames: list[str]) -> None:

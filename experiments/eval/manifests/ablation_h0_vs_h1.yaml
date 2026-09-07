@@ -1,0 +1,149 @@
+# Ablation Study (paper/experiments.tex sec:ablations): Supervised proposal
+# (BOLT) / Zero-step outcome ranking (ORPT-H0) / One-step outcome ranking
+# (ORPT-H1) -- see experiments/eval/paper_labels.py::ABLATION_ARM_TO_SIGNAL
+# for the internal-arm-name -> paper-terminology mapping, and
+# ABLATION_SCALE_NOTE for the PoC-scale caveat these results carry.
+#
+# BOLT reuses the already-completed runs/peptide_poc20_bolt_v2 (11 real
+# milestone checkpoints on disk) -- no new BOLT training needed. ORPT-H0/
+# ORPT-H1 are NOT yet trained anywhere (see
+# peptide_experiment/configs/peptide_ablation_orpt_h{0,1}.yaml) -- this
+# manifest is ready to run once that training completes.
+#
+# heldout_tasks_override [900..904] (5-task PoC subset, matching
+# peptide_poc20_bolt_v2's own scale) -- deliberately small per the paper's
+# own "do not add broad sensitivity sweeps... keep this as the main
+# ablation" instruction, not the paper-fidelity 20-/100-task held-out sets.
+models:
+  - arm: BOLT
+    milestone: 5
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-5/epoch_4
+  - arm: BOLT
+    milestone: 10
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-10/epoch_4
+  - arm: BOLT
+    milestone: 20
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-20/epoch_4
+  - arm: BOLT
+    milestone: 30
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-30/epoch_4
+  - arm: BOLT
+    milestone: 40
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-40/epoch_4
+  - arm: BOLT
+    milestone: 50
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-50/epoch_4
+  - arm: BOLT
+    milestone: 60
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-60/epoch_4
+  - arm: BOLT
+    milestone: 70
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-70/epoch_4
+  - arm: BOLT
+    milestone: 80
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-80/epoch_4
+  - arm: BOLT
+    milestone: 90
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-90/epoch_4
+  - arm: BOLT
+    milestone: 100
+    run_dir: runs/peptide_poc20_bolt_v2
+    checkpoint_dir: runs/peptide_poc20_bolt_v2/checkpoints/BOLT-100/epoch_4
+  - arm: ORPT-H0
+    milestone: 5
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-5/epoch_0
+  - arm: ORPT-H0
+    milestone: 10
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-10/epoch_0
+  - arm: ORPT-H0
+    milestone: 20
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-20/epoch_0
+  - arm: ORPT-H0
+    milestone: 30
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-30/epoch_0
+  - arm: ORPT-H0
+    milestone: 40
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-40/epoch_0
+  - arm: ORPT-H0
+    milestone: 50
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-50/epoch_0
+  - arm: ORPT-H0
+    milestone: 60
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-60/epoch_0
+  - arm: ORPT-H0
+    milestone: 70
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-70/epoch_0
+  - arm: ORPT-H0
+    milestone: 80
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-80/epoch_0
+  - arm: ORPT-H0
+    milestone: 90
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-90/epoch_0
+  - arm: ORPT-H0
+    milestone: 100
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_dir: runs/peptide_ablation_orpt_h0/checkpoints/ORPT-100/epoch_0
+  - arm: ORPT-H1
+    milestone: 5
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-5/epoch_0
+  - arm: ORPT-H1
+    milestone: 10
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-10/epoch_0
+  - arm: ORPT-H1
+    milestone: 20
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-20/epoch_0
+  - arm: ORPT-H1
+    milestone: 30
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-30/epoch_0
+  - arm: ORPT-H1
+    milestone: 40
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-40/epoch_0
+  - arm: ORPT-H1
+    milestone: 50
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-50/epoch_0
+  - arm: ORPT-H1
+    milestone: 60
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-60/epoch_0
+  - arm: ORPT-H1
+    milestone: 70
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-70/epoch_0
+  - arm: ORPT-H1
+    milestone: 80
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-80/epoch_0
+  - arm: ORPT-H1
+    milestone: 90
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-90/epoch_0
+  - arm: ORPT-H1
+    milestone: 100
+    run_dir: runs/peptide_ablation_orpt_h1
+    checkpoint_dir: runs/peptide_ablation_orpt_h1/checkpoints/ORPT-100/epoch_0

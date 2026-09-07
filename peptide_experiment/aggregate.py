@@ -74,7 +74,7 @@ def _similarity(seq: str, reference: str) -> float:
     return (length - edit_distance(str(seq), reference)) / length
 
 
-def _best_mic_at_k(
+def best_mic_at_k(
     csv_path,
     init_size: int,
     k: int,
@@ -119,7 +119,7 @@ def _sum_mic_across_tasks(
         if not csv_path.exists():
             n_missing += 1
             continue
-        mic = _best_mic_at_k(
+        mic = best_mic_at_k(
             csv_path,
             cfg.init_size,
             k,

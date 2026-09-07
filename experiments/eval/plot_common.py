@@ -37,13 +37,17 @@ def arm_colors(arms: list[str]) -> dict[str, str]:
     return colors
 
 
-def sorted_arms(df: pd.DataFrame) -> list[str]:
+def sorted_arms_from_names(names: list[str]) -> list[str]:
     """BOLT, ORPT first (established convention), then any other arm names
-    (e.g. ORPT-FA, ORPT-LEX) alphabetically."""
-    present = set(df["arm"].unique())
+    (e.g. ORPT-H0, ORPT-H1, ORPT-MI) alphabetically."""
+    present = set(names)
     known = [a for a in ("BOLT", "ORPT") if a in present]
     other = sorted(present - set(known))
     return known + other
+
+
+def sorted_arms(df: pd.DataFrame) -> list[str]:
+    return sorted_arms_from_names(list(df["arm"].unique()))
 
 
 def style_axis(ax) -> None:

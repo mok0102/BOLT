@@ -1,0 +1,9 @@
+# Milestone-independent-baseline chunk of main_v2_orpt_vs_bolt.yaml (STBO --
+# self-seeding, no checkpoint, no milestone dependence -- see
+# fixed_target_rejection_bo.py's STBO branch and plot_common.py's
+# is_milestone_independent/plot_arm_line, which render a single-milestone
+# arm as a flat dashed reference line rather than one stranded point).
+models:
+- arm: STBO
+  milestone: 0
+  run_dir: runs/peptide_main_bolt_v2

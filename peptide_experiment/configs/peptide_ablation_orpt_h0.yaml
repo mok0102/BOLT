@@ -1,0 +1,37 @@
+# Ablation Study (paper/experiments.tex sec:ablations), "Zero-step outcome
+# ranking" arm -- identical to peptide_ablation_orpt_h1.yaml except
+# mi_bo_steps=0, the literal zero-step ablation
+# peptide_experiment/mi_orpt/pair_construction.py already implements ("the
+# free zero-step ablation", its own comment): pairs are labeled by
+# one_step_evaluator.py::zero_step_utility (max of the shared background's
+# own best-known value and the candidate's value), no real one-step BO call,
+# no additional oracle cost -- see paper/method.tex's U_0(C,S) equation.
+#
+# Has never been trained at any scale before this config (confirmed: no
+# zero-step/H0 checkpoint exists anywhere on disk) -- this is real training
+# work, not yet done. Verify runs/peptide_ablation_orpt_h0/checkpoints/
+# ORPT-<m> exists before assuming otherwise.
+experiment_id: peptide_ablation_orpt_h0
+milestones: [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+mi_parallel_gpus: ["0", "1", "2", "3", "4", "5", "6", "7"]
+cuda_visible_devices: null
+oracle_budget: 5000
+init_size: 500
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+heldout_tasks_override: [900, 901, 902, 903, 904]
+torchtune_config: poc_qwen_2_5_3B_lora_bsz32.yaml
+build_orpt: true
+orpt_epochs: 1
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_torchtune_config: poc_qwen_2_5_3B_lora_dpo_bsz32.yaml
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 8
+mi_tau_q: 1.0
+mi_z_min: 1.0
+mi_delta_t: 0.0
+mi_target_pairs_per_task: 1000
+mi_max_candidates_per_task: 100
+mi_bo_steps: 0

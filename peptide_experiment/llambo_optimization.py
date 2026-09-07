@@ -168,7 +168,7 @@ def run_llambo_bo(
     cfg.oracle_budget real oracle calls are made or the token budget is
     exhausted. Writes a task_XXXX_llambo_meta.json sidecar recording how the
     run ended, so a token-exhausted short CSV is distinguishable from a real
-    failure -- aggregate.py::_best_mic_at_k()'s existing
+    failure -- aggregate.py::best_mic_at_k()'s existing
     row_idx = min(init_size+k, len(df)) clamp already tolerates a
     shorter-than-expected CSV gracefully.
     """

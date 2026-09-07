@@ -42,7 +42,11 @@ vae_statedict_path: null
 
 query_timeout_secs: 100.0
 sft_top_n_per_task: 50
-table_k_checkpoints: null  # null -> report only the terminal oracle_budget
+# Few-shot/init-only reporting checkpoints (paper's fig:fewshot few-shot-
+# proposal-quality axis) -- given directly by the user this session, purely
+# additive (affects only post-hoc aggregation, not training), safe to set
+# before any training has happened.
+table_k_checkpoints: [1, 2, 5, 10, 20, 50]
 
 cuda_visible_devices: null  # set to a free GPU id on this host before running
 lolbo_python: null  # set if optimization/query_plans/ needs a dedicated interpreter (see prerequisite 3 above)
