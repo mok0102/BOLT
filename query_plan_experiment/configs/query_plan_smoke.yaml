@@ -3,10 +3,10 @@
 # imp_plan/02_query_plan_reimplementation_plan.md's verification plan.
 experiment_id: query_plan_smoke_v1
 
-milestones: [2, 4]
-oracle_budget: 50
-init_size: 10
-sft_epochs: 1
+milestones: [1, 2, 3, 4]
+oracle_budget: 100
+init_size: 5
+sft_epochs: 50
 bsz: 1
 
 max_train_tasks: 4
@@ -15,9 +15,14 @@ heldout_tasks_override:
   - CEB_1A1272
   - CEB_1A2302
 
-sft_top_n_per_task: 10
+# sft_top_n_per_task: 10
 
 # Pin to one GPU if this host has other concurrent workloads -- set to your
 # own free GPU id before running, or leave null to use whatever CUDA_VISIBLE_DEVICES
 # is already set to in the shell.
 cuda_visible_devices: null
+
+# Use checkpoint-generated initial plans because BAO data is unavailable.
+initial_plan_source: vae
+use_pretrained_vae: true
+vae_statedict_path: /home/mok/orpt/BOLT/optimization/query_plans/query_plan_optimization/vae/CEB_64.ckpt

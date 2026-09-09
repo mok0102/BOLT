@@ -34,6 +34,8 @@ class ExperimentConfig:
     # (200) is a generic LOL-BO-template leftover -- always pass this
     # explicitly, never rely on that default.
     init_size: int = 50
+    # Initial plans before the first SFT milestone: bao or checkpoint-based vae.
+    initial_plan_source: str = "bao"
     bsz: int = 1
     sft_epochs: int = 1
     torchtune_config: str = "qwen_2_5_3B_lora.yaml"
@@ -85,11 +87,39 @@ class ExperimentConfig:
     # -- verify this by hand first (see the plan's verification-plan step
     # 1c) rather than trusting this default blindly.
     lolbo_python: str | None = None
+    build_orpt: bool = False
+    orpt_pair_source: str = "matched_intervention"
+    orpt_epochs: int = 1
+    orpt_beta: float = 0.1
+    orpt_lr: float = 2e-5
+    orpt_torchtune_config: str = "qwen_2_5_3B_lora_dpo.yaml"
+    orpt_torchtune_recipe: str = "lora_dpo_distributed"
+    mi_num_backgrounds: int = 8
+    mi_target_pairs_per_task: int = 1
+    mi_max_candidates_per_task: int = 3
+    mi_bo_steps: int = 1
+    mi_tau_q: float = 1.0
+    mi_z_min: float = 1.96
+    mi_delta_t: float = 0.0
+    mi_seed: int = 42
 
     bolt_root: Path = BOLT_ROOT
     heldout_tasks: list[str] = field(default_factory=task_splits.heldout_workloads)
 
     def __post_init__(self) -> None:
+        if self.initial_plan_source not in {"bao", "vae"}:
+            raise ValueError("initial_plan_source must be bao or vae")
+        if self.use_pretrained_vae and not self.vae_statedict_path:
+            raise ValueError("use_pretrained_vae=True requires vae_statedict_path")
+        if self.build_orpt:
+            if self.orpt_pair_source != "matched_intervention" or self.mi_bo_steps != 1:
+                raise ValueError("Query-plan ORPT supports matched_intervention with mi_bo_steps=1")
+            if self.mi_num_backgrounds < 2 or self.mi_max_candidates_per_task < 2 or self.init_size < 2:
+                raise ValueError("MI needs >=2 backgrounds, candidates, and initial plans")
+            if self.mi_tau_q <= 0 or self.mi_z_min < 0 or self.mi_delta_t < 0 or self.mi_target_pairs_per_task < 1:
+                raise ValueError("Invalid MI reliability/distribution settings")
+            if self.orpt_epochs < 1 or self.orpt_lr <= 0 or self.orpt_beta <= 0:
+                raise ValueError("Invalid ORPT training settings")
         self.base_checkpoint_dir = Path(self.base_checkpoint_dir)
         if not self.base_checkpoint_dir.is_absolute():
             self.base_checkpoint_dir = self.bolt_root / self.base_checkpoint_dir
@@ -137,6 +167,13 @@ class ExperimentConfig:
 
     def milestone_checkpoint_dir(self, milestone: int) -> Path:
         return self.checkpoints_dir / f"BOLT-{milestone}" / f"epoch_{self.sft_epochs - 1}"
+
+    @property
+    def orpt_pairs_dir(self) -> Path:
+        return self.run_dir / "orpt_pairs"
+
+    def orpt_checkpoint_dir(self, milestone: int) -> Path:
+        return self.checkpoints_dir / f"ORPT-{milestone}" / f"epoch_{self.orpt_epochs - 1}"
 
     def ensure_dirs(self) -> None:
         for d in (

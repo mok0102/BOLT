@@ -16,7 +16,7 @@ def create_init_data_aliases(
     which_language="aliases",
     N=200,
     vae_latent_space_dim=64,
-    path_to_vae="../vae/64.ckpt",
+    path_to_vae="/home/mok/orpt/BOLT/optimization/query_plans/query_plan_optimization/vae/64.ckpt",
 ):
     # always use seed 0
     set_seed(seed=0)
@@ -26,7 +26,15 @@ def create_init_data_aliases(
         timeout=timeout,
         which_language=which_language,
     )
-    vae = VAEModule.load_from_checkpoint(path_to_vae)
+    if path_to_vae:
+        vae = VAEModule.load_from_checkpoint(path_to_vae)
+    else:
+        # Match the random VAE architecture used by the BO objective.
+        from vae.model import build_vocab
+        spec = oracle.full_workload_spec
+        max_aliases = max((n for _, n in spec.query_tables), default=1)
+        vocab, rev_vocab = build_vocab(num_tables=len(spec.all_tables), num_aliases=max_aliases + 4)
+        vae = VAEModule(vocab=vocab, rev_vocab=rev_vocab, bn_size=1, d_neck=vae_latent_space_dim)
     vae.cuda()
     samples = vae.sample(torch.randn(N, vae_latent_space_dim).cuda())
     scores_list, censoring_list = oracle.query_black_box(samples)

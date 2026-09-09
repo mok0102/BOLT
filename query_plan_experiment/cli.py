@@ -20,13 +20,18 @@ from .aggregate import _arms as _all_arms
 from .aggregate import build_table1
 from .config import load_config
 from .heldout_eval import run_heldout_eval
-from .trajectory_chain import run_trajectory_chain
+from .trajectory_chain import run_trajectory_chain, run_trajectory_chain_batch
 
 
 class CLI:
     def trajectory_chain(self, config: str) -> None:
         cfg = load_config(config)
         run_trajectory_chain(cfg)
+
+    def trajectory_chain_batch(self, config: str, workers: int = 2, gpu_ids: str = "") -> None:
+        """Parallelize BO/LLM initialization within milestone intervals."""
+        cfg = load_config(config)
+        run_trajectory_chain_batch(cfg, workers=workers, gpu_ids=gpu_ids)
 
     def heldout_eval(self, config: str, arm: str) -> None:
         cfg = load_config(config)

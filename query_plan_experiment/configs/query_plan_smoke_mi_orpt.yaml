@@ -1,0 +1,23 @@
+# MI uses 3 candidates x 8 backgrounds = 24 real BO rounds per eligible task/milestone.
+experiment_id: query_plan_smoke_mi_orpt_onestep_v1
+milestones: [2, 4]
+oracle_budget: 100
+init_size: 5
+sft_epochs: 50
+bsz: 1
+max_train_tasks: 4
+heldout_tasks_override:
+- CEB_1A10
+- CEB_1A1272
+- CEB_1A2302
+cuda_visible_devices: null
+initial_plan_source: vae
+use_pretrained_vae: true
+vae_statedict_path: /home/mok/orpt/BOLT/optimization/query_plans/query_plan_optimization/vae/CEB_64.ckpt
+build_orpt: true
+orpt_pair_source: matched_intervention
+orpt_epochs: 1
+mi_num_backgrounds: 8
+mi_target_pairs_per_task: 1
+mi_max_candidates_per_task: 3
+mi_bo_steps: 1

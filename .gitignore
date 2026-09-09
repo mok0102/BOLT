@@ -234,3 +234,16 @@ wandb/
 optimization/peptides/lolbo_scripts/optimization_all_collected_data/*.csv
 optimization/peptides/uniref_vae/uniref-small.csv
 optimization/peptides/uniref_vae/saved_models/
+# Query-plan local model weights, downloaded DB assets and generated init data
+/optimization/query_plans/query_plan_optimization/vae/*.ckpt
+/optimization/query_plans/query_plan_optimization/imdb_postgres/dataverse_files.zip
+/optimization/query_plans/query_plan_optimization/workload/ceb-3k.zip
+/optimization/query_plans/query_plan_optimization/workload/ceb-3k/*/
+/optimization/query_plans/query_plan_optimization/workload/job/
+/optimization/query_plans/query_plan_optimization/initialization_data/*_init_data.csv
+/fine-tuning/query_plans/output/
+/fine-tuning/query_plans/tensorboard/
+
+# Commit query-plan regression tests; retain global cache exclusions.
+!/query_plan_experiment/tests/
+!/query_plan_experiment/tests/*.py

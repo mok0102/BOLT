@@ -40,7 +40,8 @@ from botorch.sampling import MCSampler
 from gpytorch.constraints import GreaterThan
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.kernels import Kernel, MaternKernel, ScaleKernel
-from gpytorch.lazy import LazyTensor
+# from gpytorch.lazy import LazyTensor
+from linear_operator.operators import LinearOperator as LazyTensor
 from gpytorch.likelihoods import (
     GaussianLikelihood,
     Likelihood,

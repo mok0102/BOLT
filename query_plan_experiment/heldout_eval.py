@@ -19,7 +19,9 @@ from .steps import run_bo, sample_and_build_init
 
 
 def _checkpoint_for_arm(cfg: ExperimentConfig, arm: str):
-    assert arm.startswith("BOLT-"), f"expected an arm like 'BOLT-50', got {arm!r}"
+    if arm.startswith("ORPT-") and cfg.build_orpt:
+        return cfg.orpt_checkpoint_dir(int(arm.split("-", 1)[1]))
+    assert arm.startswith("BOLT-"), f"expected BOLT-<m> or enabled ORPT-<m>, got {arm!r}"
     return cfg.milestone_checkpoint_dir(int(arm.split("-", 1)[1]))
 
 
@@ -40,7 +42,7 @@ def run_heldout_eval(cfg: ExperimentConfig, arm: str) -> None:
             else:
                 model_path = _checkpoint_for_arm(cfg, arm)
                 init_csv_path = sample_and_build_init(cfg, model_path, workload, out_dir)
-                run_bo(cfg, workload, out_dir, run_id=run_id, init_csv_path=init_csv_path)
+                run_bo(cfg, workload, out_dir, run_id=run_id, init_csv_path=init_csv_path, init_w_llm=True)
             n_ok += 1
         except (subprocess.CalledProcessError, RuntimeError) as e:
             print(f"[{run_id} {workload}] FAILED, continuing with rest of sweep: {e}")

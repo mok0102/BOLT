@@ -2,6 +2,9 @@ import argparse
 import ast
 import re
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "optimization/query_plans/query_plan_optimization"))
+from query_plan_timing import span
 from typing import Any, List, Optional
 
 import pandas as pd
@@ -192,20 +195,21 @@ def main(
     }[dtype]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    tokenizer = AutoTokenizer.from_pretrained(base_dir, trust_remote_code=True)
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "left"
+    with span("llm_model_and_tokenizer_load"):
+        tokenizer = AutoTokenizer.from_pretrained(base_dir, trust_remote_code=True)
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.padding_side = "left"
 
-    config = AutoConfig.from_pretrained(base_dir, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_dir,
-        config=config,
-        torch_dtype=torch_dtype,
-        trust_remote_code=True,
-    )
-    model.to(device)
-    model.eval()
+        config = AutoConfig.from_pretrained(base_dir, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_dir,
+            config=config,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+        )
+        model.to(device)
+        model.eval()
 
     tasks = load_tasks(Path(tasks_file), max_tasks=max_tasks)
     task_descriptions = [
@@ -224,17 +228,19 @@ def main(
     all_generated_answers = []
     all_generated_texts = []
     for task_description in tqdm(task_descriptions, total=len(task_descriptions)):
-        parsed_outputs, raw_outputs = generate_for_query(
-            model=model,
-            tokenizer=tokenizer,
-            query=task_description,
-            num_samples=num_samples,
-            sample_batch_size=sample_batch_size,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            device=device,
-        )
+        with span("llm_generation", num_samples=num_samples):
+            parsed_outputs, raw_outputs = generate_for_query(
+                model=model,
+                tokenizer=tokenizer,
+                query=task_description,
+                num_samples=num_samples,
+                sample_batch_size=sample_batch_size,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                device=device,
+            )
+
         all_generated_answers.append(parsed_outputs)
         all_generated_texts.append(raw_outputs)
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,8 @@ from pathlib import Path
 import pandas as pd
 
 from .config import ExperimentConfig
+from .timing import timed_operation
+from query_plan_timing import event, span
 
 LOLBO_SCRIPTS_DIR = "optimization/query_plans/query_plan_optimization/lolbo_scripts"
 WORKLOAD_DIR = "optimization/query_plans/query_plan_optimization/workload"
@@ -40,13 +43,22 @@ def _run(cmd: list, cwd: Path, cfg: ExperimentConfig | None = None) -> None:
     env = {**os.environ, "PAGER": "cat", "MANPAGER": "cat", "GIT_PAGER": "cat"}
     if cfg is not None and cfg.cuda_visible_devices is not None:
         env["CUDA_VISIBLE_DEVICES"] = cfg.cuda_visible_devices
-    subprocess.run(
-        [str(c) for c in cmd],
-        cwd=str(cwd),
-        check=True,
-        env=env,
-        stdin=subprocess.DEVNULL,
-    )
+    if len(cmd) > 1 and str(cmd[1]) == "sampling_transformer.py":
+        phase = "llm_sampling_process"
+    elif str(cmd[0]) == "tune":
+        phase = "llm_dpo_training_process" if any("dpo" in str(c) for c in cmd) else "llm_sft_training_process"
+    elif len(cmd) > 1 and str(cmd[1]) == "info_transformer_vae_optimization.py":
+        phase = "bo_process"
+    else:
+        phase = "data_preparation_process"
+    with span(phase):
+        subprocess.run(
+            [str(c) for c in cmd],
+            cwd=str(cwd),
+            check=True,
+            env=env,
+            stdin=subprocess.DEVNULL,
+        )
 
 
 def cleanup_intermediate_epochs(ckpt_dir: Path, final_ckpt: Path) -> None:
@@ -90,6 +102,7 @@ def _pad_to_size(xs: list[list[int]], ys: list[float], censoring: list[int], tar
     return xs[:target_size], ys[:target_size], censoring[:target_size]
 
 
+@timed_operation("sampling_and_init")
 def sample_and_build_init(
     cfg: ExperimentConfig,
     model_path: Path | str,
@@ -112,9 +125,19 @@ def sample_and_build_init(
     from your_tasks.your_objective_functions import DatabaseObjective  # noqa: E402 -- relies on config.py's sys.path insert
 
     work_dir.mkdir(parents=True, exist_ok=True)
-    init_csv_path = work_dir / f"{workload}_init.csv"
+    checkpoint = Path(model_path)
+    match = next((re.fullmatch(r"(BOLT|ORPT)-(\d+)", part) for part in reversed(checkpoint.parts)
+                  if re.fullmatch(r"(BOLT|ORPT)-(\d+)", part)), None)
+    if match is None:
+        raise ValueError(f"Cannot determine training task count from checkpoint: {checkpoint}")
+    n_tasks = int(match.group(2))
+    work_dir = work_dir / match.group(0) / workload
+    work_dir.mkdir(parents=True, exist_ok=True)
+    sample_stem = f"{n_tasks}tasks_samples_temp07"
+    init_csv_path = work_dir / f"{sample_stem}.csv"
     if init_csv_path.exists():
         print(f"[{workload}] init data already exists at {init_csv_path}, skipping")
+        event("cache_hit", 0, artifact=str(init_csv_path))
         return init_csv_path
 
     fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
@@ -139,7 +162,9 @@ def sample_and_build_init(
     xs: list[list[int]] = []
     for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
         num_samples = cfg.init_size * attempt
-        attempt_jsonl = work_dir / f"{workload}_sampled_attempt{attempt}.jsonl"
+        attempt_dir = work_dir / f"attempt_{attempt}"
+        attempt_dir.mkdir(parents=True, exist_ok=True)
+        attempt_jsonl = attempt_dir / f"{sample_stem}.jsonl"
         _run(
             [
                 python,
@@ -187,18 +212,23 @@ def sample_and_build_init(
         )
 
     xs = xs[: cfg.init_size]  # trim any surplus before spending real oracle calls scoring them
-    ys, censoring = oracle.query_black_box(xs)
+    with span("initial_plan_scoring", candidates=len(xs)):
+        ys, censoring = oracle.query_black_box(xs)
     xs, ys, censoring = _pad_to_size(xs, ys, censoring, cfg.init_size)
     _write_init_csv(init_csv_path, xs, ys, censoring)
     return init_csv_path
 
 
+@timed_operation("bo")
 def run_bo(
     cfg: ExperimentConfig,
     workload: str,
     work_dir: Path,
     run_id: str,
     init_csv_path: Path | None = None,
+    seed: int | None = None,
+    max_bo_steps: int | None = None,
+    init_w_llm: bool = False,
 ) -> Path:
     """Run one single-task BO trial and return the path to its collected-data
     CSV (train_x, train_y, censoring), copied into `work_dir` for permanence.
@@ -211,10 +241,13 @@ def run_bo(
     info_transformer_vae_optimization.py's load_train_data()), turning off
     init_w_bao so that patched branch is actually reached.
     """
+    if init_w_llm and init_csv_path is None:
+        raise ValueError("LLM initialization requires a scored init CSV")
     work_dir.mkdir(parents=True, exist_ok=True)
     dest_csv = work_dir / f"{workload}.csv"
     if dest_csv.exists():
         print(f"[{run_id} {workload}] trajectory already exists at {dest_csv}, skipping")
+        event("cache_hit", 0, artifact=str(dest_csv))
         return dest_csv
 
     lolbo_scripts_dir = cfg.bolt_root / LOLBO_SCRIPTS_DIR
@@ -247,7 +280,17 @@ def run_bo(
     else:
         cmd += ["--path_to_vae_statedict", ""]
     if init_csv_path is not None:
-        cmd += ["--init_w_bao", "False", "--init_csv_path", str(init_csv_path)]
+        cmd += ["--init_w_bao", "False", "--init_w_llm", str(init_w_llm), "--init_csv_path", str(init_csv_path)]
+        if init_w_llm:
+            count = re.match(r"(\d+)tasks_samples_temp07", Path(init_csv_path).stem)
+            if count:
+                cmd += ["--init_w_llm_n_tasks", count.group(1)]
+    elif cfg.initial_plan_source == "vae":
+        cmd += ["--init_w_bao", "False", "--init_w_llm", "False", "--init_w_random", "False"]
+    if seed is not None:
+        cmd += ["--seed", str(seed)]
+    if max_bo_steps is not None:
+        cmd += ["--max_bo_steps", str(max_bo_steps)]
     cmd += ["-", "run_lolbo", "-", "done"]
 
     _run(cmd, cwd=lolbo_scripts_dir, cfg=cfg)

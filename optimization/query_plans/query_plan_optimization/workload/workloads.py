@@ -302,9 +302,12 @@ def load_ceb13k() -> None:
 
 STACK_DIR = os.path.join(os.path.dirname(__file__), "stack")
 STACK_SCHEMA_PATH = os.path.join(STACK_DIR, "schema.sql")
-SO_PAST_WORKLOAD_SET = WorkloadDefinitionSet(STACK_SCHEMA_PATH, {})
-SO_FUTURE_WORKLOAD_SET = WorkloadDefinitionSet(STACK_SCHEMA_PATH, {})
-SO_SHIFTED_WORKLOAD_SET = WorkloadDefinitionSet(STACK_SCHEMA_PATH, {})
+# SO_PAST_WORKLOAD_SET = WorkloadDefinitionSet(STACK_SCHEMA_PATH, {})
+# SO_FUTURE_WORKLOAD_SET = WorkloadDefinitionSet(STACK_SCHEMA_PATH, {})
+# SO_SHIFTED_WORKLOAD_SET = WorkloadDefinitionSet(STACK_SCHEMA_PATH, {})
+SO_PAST_WORKLOAD_SET = None
+SO_FUTURE_WORKLOAD_SET = None
+SO_SHIFTED_WORKLOAD_SET = None
 
 
 def load_so_past() -> None:
@@ -397,7 +400,8 @@ def load_so_shifted() -> None:
 # =====
 DSB_DIR = os.path.join(os.path.dirname(__file__), "dsb")
 DSB_SCHEMA_PATH = os.path.join(DSB_DIR, "schema.sql")
-DSB_WORKLOAD_SET = WorkloadDefinitionSet(DSB_SCHEMA_PATH, {})
+# DSB_WORKLOAD_SET = WorkloadDefinitionSet(DSB_SCHEMA_PATH, {})
+DSB_WORKLOAD_SET = None
 
 
 def load_dsb() -> None:
@@ -436,19 +440,23 @@ def get_workload_set(workload_set: str) -> WorkloadDefinitionSet:
             load_ceb13k()
         return CEB_13K_WORKLOAD_SET
     elif workload_set == "SO_PAST":
-        if len(SO_PAST_WORKLOAD_SET.queries) == 0:
+        # if len(SO_PAST_WORKLOAD_SET.queries) == 0:
+        if SO_PAST_WORKLOAD_SET is None:
             load_so_past()
         return SO_PAST_WORKLOAD_SET
     elif workload_set == "SO_FUTURE":
-        if len(SO_FUTURE_WORKLOAD_SET.queries) == 0:
+        # if len(SO_FUTURE_WORKLOAD_SET.queries) == 0:
+        if SO_FUTURE_WORKLOAD_SET is None:
             load_so_future()
         return SO_FUTURE_WORKLOAD_SET
     elif workload_set == "SO_SHIFTED":
-        if len(SO_SHIFTED_WORKLOAD_SET.queries) == 0:
+        # if len(SO_SHIFTED_WORKLOAD_SET.queries) == 0:
+        if SO_SHIFTED_WORKLOAD_SET is None:
             load_so_shifted()
         return SO_SHIFTED_WORKLOAD_SET
     elif workload_set == "DSB":
-        if len(DSB_WORKLOAD_SET.queries) == 0:
+        # if len(DSB_WORKLOAD_SET.queries) == 0:
+        if DSB_WORKLOAD_SET is None:
             load_dsb()
         return DSB_WORKLOAD_SET
     else:

@@ -22,7 +22,7 @@ from .config import ExperimentConfig
 
 
 def _arms(cfg: ExperimentConfig) -> list[str]:
-    return [f"BOLT-{m}" for m in cfg.milestones]
+    return [f"{kind}-{m}" for kind in (["BOLT", "ORPT"] if cfg.build_orpt else ["BOLT"]) for m in cfg.milestones]
 
 
 def best_runtime_at_k(csv_path, init_size: int, k: int) -> float | None:

@@ -1,0 +1,53 @@
+# Query-plan main workload/budgets + peptide main MI/DPO statistical settings.
+# MI hyperparameters are transferred, not tuned on query plans.
+# Initial trajectory plans and MI evaluations use random VAEs (no checkpoint).
+# Existing initialization CSVs are reused; no BAO data is required.
+# Serial DB evaluations: 60 candidates x 8 backgrounds = 480 BO rounds per
+# eligible task at each cumulative milestone. Minimum bank: 49 + 60 = 109
+# unique completed plans. Reliability filtering may retain fewer than 10 pairs.
+# Keep query-plan SFT/DPO recipes (rank 16, alpha 32; batches 4 / 1).
+experiment_id: query_plan_main_mi_orpt_onestep_v1
+milestones:
+- 50
+- 893
+- 1138
+- 1426
+oracle_budget: 500
+bsz: 1
+init_size: 50
+sft_epochs: 5
+torchtune_config: qwen_2_5_3B_lora.yaml
+torchtune_recipe: lora_finetune_distributed
+base_checkpoint_dir: fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct
+max_train_tasks: null
+heldout_tasks_override: null
+which_query_language: aliases
+allow_cross_joins: true
+use_pretrained_vae: false
+vae_statedict_path: null
+query_timeout_secs: 100.0
+sft_top_n_per_task: 50
+table_k_checkpoints:
+- 1
+- 2
+- 5
+- 10
+- 20
+- 50
+cuda_visible_devices: null
+lolbo_python: null
+build_orpt: true
+orpt_epochs: 1
+orpt_beta: 0.25
+orpt_lr: 2.0e-05
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 8
+mi_tau_q: 1.0
+mi_z_min: 1.0
+mi_delta_t: 0.0
+mi_target_pairs_per_task: 10
+mi_max_candidates_per_task: 60
+mi_bo_steps: 1
+initial_plan_source: vae
+orpt_torchtune_config: qwen_2_5_3B_lora_dpo.yaml
+orpt_torchtune_recipe: lora_dpo_distributed

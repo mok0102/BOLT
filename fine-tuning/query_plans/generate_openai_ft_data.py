@@ -1,6 +1,6 @@
 import argparse
 import pandas as pd
-import os
+from pathlib import Path
 import json
 
 import re
@@ -12,6 +12,7 @@ def parse_args():
     )
     parser.add_argument("--data-path", default="data/example_finetuning_data.csv")
     parser.add_argument("--save-path", default="data/example_finetuning_data.jsonl")
+    parser.add_argument("--workload-dir", type=Path, default=Path(__file__).resolve().parents[2] / "optimization/query_plans/query_plan_optimization/workload")
     return parser.parse_args()
 
 
@@ -36,24 +37,24 @@ def extract_task_id(task):
 
 
 def get_task_description(task):
-    # Note: This function assumes a 'workload' directory exists with SQL files.
-    # Users should provide their own workload files or adjust the paths below.
-    if not os.path.exists("./workload"):
-        return "SELECT * FROM table"  # Placeholder return if workload dir is missing
+    workload_dir = _args.workload_dir
+    if not workload_dir.is_dir():
+        raise FileNotFoundError(f"Workload directory does not exist: {workload_dir}")
 
     workload_group = task.split("_")[0].lower()
     task = task.split("_")[1].lower()
 
     if workload_group == "job":
-        with open(f"./workload/job/{task}.sql") as f:
+        with open(workload_dir / "job" / f"{task}.sql") as f:
             return f.read()
     elif workload_group == "ceb":  # assume 3k for now, ignore 13k
         # get task id from task, everything before and including last alphabet character (a~z)
         task_id = extract_task_id(task)
 
-        with open(f"./workload/ceb-3k/{task_id}/{task}.sql") as f:
+        with open(workload_dir / "ceb-3k" / task_id / f"{task}.sql") as f:
             return f.read()
 
+    raise ValueError(f"Unsupported workload group: {workload_group}")
 
 sample_prompt = {
     "messages": [
@@ -112,10 +113,15 @@ with open(output_path, "w") as f:
         f.write(line + "\n")
 
 
-from token_count import TokenCount
-
-tc = TokenCount(model_name="gpt-4o-mini-2024-07-18")
-# count tokens in the training data
-tokens = tc.num_tokens_from_file(output_path)
-print(f"Number of tokens in training data: {tokens}")
+# Optional reporting only; JSONL generation does not require token_count.
+try:
+    from token_count import TokenCount
+except ModuleNotFoundError as exc:
+    if exc.name != "token_count":
+        raise
+    print("Skipping optional token count: token_count is not installed.")
+else:
+    tc = TokenCount(model_name="gpt-4o-mini-2024-07-18")
+    tokens = tc.num_tokens_from_file(output_path)
+    print(f"Number of tokens in training data: {tokens}")
 print(f"Kept {kept} tasks")

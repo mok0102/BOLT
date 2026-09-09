@@ -118,7 +118,9 @@ class InfoTransformerVAEOptimization(Optimize):
             self.init_train_y (a tensor of scores/y's)
             self.init_censoring (a binary tensor indicating censoring for censored obs only)
         """
-        if self.init_w_llm:  # init w/ BOLT's LLM generated queries
+        # A scored per-run LLM CSV is read by the init_csv_path branch below;
+        # no path retains the legacy multi-task JSONL loader.
+        if self.init_w_llm and self.init_csv_path is None:
             # "150tasks_samples_temp07.jsonl"
             # "250tasks_samples_temp07.jsonl"
             init_data_path = f"../initialization_data/{self.init_w_llm_n_tasks}tasks_samples_temp07.jsonl"
@@ -142,12 +144,23 @@ class InfoTransformerVAEOptimization(Optimize):
             self.init_train_y = y
             self.worst_runtime_observed = self.init_train_y.min().item() * -1
         elif self.init_w_bao:
-            init_data_path = f"../initialization_data/bao_censored_initializations.csv"
-            df = pd.read_csv(init_data_path, sep=";")  # (5537, 6)
-            df = df[df["query_name"] == self.workload_name]  # (49, 6)
-            xs_key = "plan"
-            censoring_key = "censored"
-            ceb_3k = False
+            # init_data_path = f"../initialization_data/bao_censored_initializations.csv"
+            # df = pd.read_csv(init_data_path, sep=";")  # (5537, 6)
+            # df = df[df["query_name"] == self.workload_name]  # (49, 6)
+            # xs_key = "plan"
+            # censoring_key = "censored"
+            # ceb_3k = False
+            # 변경
+            init_dir = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "initialization_data")
+            )
+            init_data_path = os.path.join(init_dir, "bao_censored_initializations.csv")
+
+            if os.path.isfile(init_data_path):
+                df = pd.read_csv(init_data_path, sep=";")
+                df = df[df["query_name"] == self.workload_name]
+            else:
+                df = pd.DataFrame()
             if df.shape[0] == 0:
                 init_data_path = f"../initialization_data/ceb_3k_bao_initialization.csv"
                 df = pd.read_csv(init_data_path)  # (146363, 8)
@@ -156,6 +169,7 @@ class InfoTransformerVAEOptimization(Optimize):
                 censoring_key = "timed_out"
                 ceb_3k = True
             if df.shape[0] == 0:
+                print(self.workload_name, df.shape)
                 assert 0, f"no bao init data for workload {self.workload_name}"
 
             y = df["runtime_secs"].values  # (49,)

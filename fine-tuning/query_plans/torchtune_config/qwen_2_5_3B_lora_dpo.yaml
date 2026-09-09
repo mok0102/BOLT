@@ -1,0 +1,77 @@
+output_dir: ./output/qwen_2_5_3B_lora_output
+model:
+  _component_: torchtune.models.qwen2_5.lora_qwen2_5_3b
+  lora_attn_modules:
+  - q_proj
+  - v_proj
+  - output_proj
+  apply_lora_to_mlp: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.0
+tokenizer:
+  _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
+  path: ./ckpt/Qwen2.5-3B-Instruct/vocab.json
+  merges_file: ./ckpt/Qwen2.5-3B-Instruct/merges.txt
+  max_seq_len: null
+dataset:
+  _component_: torchtune.datasets.preference_dataset
+  source: json
+  data_files: ./orpt_pairs/orpt_pairs.jsonl
+  split: train
+  train_on_input: false
+checkpointer:
+  _component_: torchtune.training.FullModelHFCheckpointer
+  checkpoint_dir: ./ckpt/Qwen2.5-3B-Instruct
+  checkpoint_files:
+  - model-00001-of-00002.safetensors
+  - model-00002-of-00002.safetensors
+  recipe_checkpoint: null
+  output_dir: ${output_dir}
+  model_type: QWEN2
+resume_from_checkpoint: false
+save_adapter_weights_only: false
+seed: 42
+shuffle: true
+batch_size: 1
+epochs: 1
+optimizer:
+  _component_: torch.optim.AdamW
+  fused: true
+  weight_decay: 0.01
+  lr: 2.0e-05
+lr_scheduler:
+  _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
+  num_warmup_steps: 0
+loss:
+  _component_: torchtune.rlhf.loss.DPOLoss
+  beta: 0.1
+  label_smoothing: 0
+max_steps_per_epoch: null
+gradient_accumulation_steps: 1
+clip_grad_norm: null
+compile: false
+device: cuda
+enable_activation_checkpointing: true
+enable_activation_offloading: true
+dtype: bf16
+metric_logger:
+  _component_: torchtune.training.metric_logging.TensorBoardLogger
+  log_dir: ./tensorboard
+  organize_logs: true
+log_every_n_steps: 1
+log_peak_memory_stats: false
+profiler:
+  _component_: torchtune.training.setup_torch_profiler
+  enabled: false
+  output_dir: ${output_dir}/profiling_outputs
+  cpu: true
+  cuda: true
+  profile_memory: false
+  with_stack: false
+  record_shapes: true
+  with_flops: false
+  wait_steps: 5
+  warmup_steps: 3
+  active_steps: 2
+  num_cycles: 1

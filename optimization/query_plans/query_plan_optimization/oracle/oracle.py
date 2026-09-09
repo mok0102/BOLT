@@ -1,11 +1,14 @@
 import os
 import time
+from query_plan_timing import event
 from dataclasses import dataclass
 
 import networkx as nx  # type: ignore
 import psycopg  # type: ignore
 from codec.codec import AliasesCodec, Codec, JoinTree, JoinTreeBranch, JoinTreeLeaf
 from workload.workloads import WorkloadSpec, WorkloadSpecDefinition
+
+from .batch_gate import serialized_batch_query
 
 from .structures import (
     CompletedQuery,
@@ -98,6 +101,7 @@ def _join_tree_has_crossjoin(workload: WorkloadSpec, join_tree: JoinTree) -> boo
             raise ValueError("Unknown join tree type")
 
 
+@serialized_batch_query
 def _execute_query(spec: WorkloadSpec, input: WorkloadInput) -> QueryResult:
     query = _decode_query(spec, input.encoded_query)
     # print(query)
@@ -106,21 +110,28 @@ def _execute_query(spec: WorkloadSpec, input: WorkloadInput) -> QueryResult:
 
     with psycopg.connect(host=DB_HOST, user=DB_USER, password=DB_PASSWORD) as conn:
         with conn.cursor() as cur:
+            query_clock = None
             try:
                 cur.execute(f"SET statement_timeout TO {timeout_ms}")
                 cur.execute("SET client_encoding TO 'UTF8'")
                 start_time = time.time()
+                query_clock = time.perf_counter()
                 cur.execute(query)
                 end_time = time.time()
+                event("db_query_execution", time.perf_counter() - query_clock, result="completed")
 
                 return CompletedQuery(
                     spec=execution_spec,
                     elapsed_secs=end_time - start_time,
                 )
             except psycopg.errors.QueryCanceled:
+                if query_clock is not None:
+                    event("db_query_execution", time.perf_counter() - query_clock, result="cancelled", timeout_secs=input.timeout_secs)
                 return TimedOutQuery(spec=execution_spec, elapsed_secs=timeout_ms / 1000)
             except Exception as e:
                 end_time = time.time()
+                if query_clock is not None:
+                    event("db_query_execution", time.perf_counter() - query_clock, result="failed", error_type=type(e).__name__)
                 return FailedQuery(
                     spec=execution_spec,
                     elapsed_secs=end_time - start_time,

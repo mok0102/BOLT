@@ -20,6 +20,7 @@ import signal
 import copy
 import time
 from utils.set_seed import set_seed
+from query_plan_timing import event, span
 
 try:
     import wandb
@@ -69,6 +70,7 @@ class Optimize(object):
         wandb_entity: str = "xxx",
         wandb_project_name: str = "",
         max_n_oracle_calls: int = 4_000,
+        max_bo_steps: int = None,
         max_non_parallel_runtime_hours: int = None,
         learning_rte: float = 0.01,
         acq_func: str = "ts",
@@ -134,6 +136,9 @@ class Optimize(object):
         self.task_id = task_id
         self.workload_name = workload_name
         self.max_n_oracle_calls = max_n_oracle_calls
+        if max_bo_steps is not None and max_bo_steps < 0:
+            raise ValueError("max_bo_steps must be nonnegative")
+        self.max_bo_steps = max_bo_steps
         self.max_non_parallel_runtime_hours = max_non_parallel_runtime_hours
         self.verbose = verbose
         self.num_initialization_points = num_initialization_points
@@ -170,9 +175,11 @@ class Optimize(object):
 
         # initialize train data for particular task
         #   must define self.init_train_x, self.init_train_y, and self.init_train_z
-        self.load_train_data()
+        with span("bo_initial_data_load_or_generate"):
+            self.load_train_data()
         # initialize latent space objective (self.objective) for particular task
-        self.initialize_objective()
+        with span("bo_objective_vae_initialization"):
+            self.initialize_objective()
 
         assert isinstance(self.objective, LatentSpaceObjective), (
             "self.objective must be an instance of LatentSpaceObjective"
@@ -253,8 +260,10 @@ class Optimize(object):
         if self.track_with_wandb:
             config_dict = {k: v for method_dict in self.method_args.values() for k, v in method_dict.items()}
             self.tracker = wandb.init(
-                project=self.wandb_project_name,
-                entity=self.wandb_entity,
+                # project=self.wandb_project_name,
+                # entity=self.wandb_entity,
+                project='bolt',
+                entity='jungmok',
                 config=config_dict,
             )
             self.wandb_run_name = wandb.run.name
@@ -346,6 +355,8 @@ class Optimize(object):
         # main optimization loop
         contine_run_condition = True
         while contine_run_condition:
+            if self.max_bo_steps is not None and n_iters >= self.max_bo_steps:
+                break
             start_full_opt_loop_time = time.time()
             self.log_data_to_wandb_on_each_loop()
             if self.max_non_parallel_runtime_hours is None:
@@ -353,6 +364,8 @@ class Optimize(object):
             else:
                 total_non_parallel_runtime_so_far_hours = self.total_non_parallel_runtime_so_far / 3600
                 contine_run_condition = total_non_parallel_runtime_so_far_hours < self.max_non_parallel_runtime_hours
+            if not contine_run_condition:
+                break
             # update models end to end when we fail to make
             #   progress e2e_freq times in a row (e2e_freq=10 by default)
             start_update_models = time.time()
@@ -365,8 +378,14 @@ class Optimize(object):
             else:  # otherwise, just update the surrogate model on data
                 self.lolbo_state.update_surrogate_model()
             self.time_to_update_model = time.time() - start_update_models
+            event("bo_surrogate_update", self.time_to_update_model, iteration=n_iters)
             # generate new candidate points, evaluate them, and update data
-            self.lolbo_state.acquisition()  # other timing logged within here
+            with span("bo_acquisition_including_db", iteration=n_iters):
+                self.lolbo_state.acquisition()
+            for phase, attr in [("bo_candidate_generation", "time_generate_candidates"),
+                                ("bo_timeout_selection", "time_set_oracle_timeout"),
+                                ("bo_vae_decode", "time_vae_decode")]:
+                event(phase, getattr(self.lolbo_state, attr, 0.0), iteration=n_iters)
             # if a new best has been found, print out new best input and score:
             if self.lolbo_state.new_best_found:
                 if self.verbose:
@@ -385,7 +404,8 @@ class Optimize(object):
 
         # save all data collected during optimization
         self.save_all_collected_data()
-        self.tracker.finish()
+        if self.tracker is not None:
+            self.tracker.finish()
 
         return self
 
@@ -415,7 +435,8 @@ class Optimize(object):
         print("Ctrl-c hass been pressed, wait while we save all collected data...")
         self.save_all_collected_data()
         print("Now terminating wandb tracker...")
-        self.tracker.finish()
+        if self.tracker is not None:
+            self.tracker.finish()
         msg = "Data now saved and tracker terminated, now exiting..."
         print(msg, end="", flush=True)
         exit(1)
