@@ -1,12 +1,53 @@
-# Tiny end-to-end sanity check, distinct experiment_id so it can never
-# collide with real-run outputs under runs/.
+# Tiny end-to-end sanity check for the full BOLT + ORPT (H0 AND H1) pipeline
+# -- distinct experiment_id so it can never collide with a real run's output
+# under runs/. Supersedes the old BOLT-only peptide_smoke.yaml: since
+# train_milestone() always runs regardless of build_orpt, this config is a
+# strict superset (BOLT-<m> is still built at every milestone; ORPT-<m> is
+# additionally trained on top of it).
+#
+# mi_bo_steps=1 with mi_require_h0 left at its default (true) exercises the
+# real H0-AND-H1 pair-construction path this session's changes added
+# (peptide_experiment/mi_orpt/pair_construction.py). Watch the logs for
+# "N pair(s) rejected by the H0 necessary condition" -- if it's always
+# len(pairs_evaluated) (every pair rejected), mi_z_min/mi_delta_t need
+# revisiting before a real run.
+#
+# mi_num_backgrounds kept at the real production default (8, see
+# peptide_main_orpt_h1.yaml) rather than shrunk further -- M directly
+# controls the reliability filter's statistical power (SE of Delta_1 ~
+# 1/sqrt(M)); a prior smoke run found M=2/M=4 both make z>=z_min essentially
+# impossible to clear at this tiny scale, producing 0 trainable pairs
+# regardless of the H0 gate. mi_max_candidates_per_task=4/
+# mi_target_pairs_per_task=1 keep the one-step-BO subprocess count small
+# (4*8=32 real-BO calls/task) since this is a timing probe, not a real run.
+#
+# init_size=30 (NOT the real 100 -- see peptide_main_*.yaml for the real
+# paper-scale value): min_bank_size_needed(m=init_size, num_reserved=
+# mi_max_candidates_per_task) = (init_size-1)+mi_max_candidates_per_task
+# must clear the number of unique, similarity-feasible candidates a single
+# tiny early-milestone task's trajectory actually yields -- confirmed
+# empirically that init_size=100 needs >=103 candidates but this smoke
+# task's own trajectory (600 raw rows: 100 init + 500 BO) only yielded 100,
+# so real BO pair construction (not just the free bank-size/dedup checks)
+# never got exercised. 30 leaves a wide margin (need only >=33) so this
+# smoke config actually reaches mi_orpt/pair_construction.py's real
+# reliability filter and H0 gate, which is the whole point of this
+# smoke test -- purely a smoke-test knob, not a claim that 30 is a
+# representative real init_size.
 experiment_id: peptide_smoke_v1
 milestones: [1, 2, 3]
-oracle_budget: 200
-init_size: 20
+oracle_budget: 500
+init_size: 30
 bsz: 10
 sft_epochs: 1
 similarity_threshold: 0.75
 heldout_tasks_override: [900, 901]
-table_k_checkpoints: [1, 50, 100, 150, 200]
-cuda_visible_devices: "5"
+table_k_checkpoints: [1, 20, 50, 100]
+cuda_visible_devices: "0"
+build_orpt: true
+orpt_epochs: 1
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 8
+mi_target_pairs_per_task: 1
+mi_max_candidates_per_task: 4
+mi_bo_steps: 1

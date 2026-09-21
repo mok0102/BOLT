@@ -9,12 +9,12 @@
 #
 # Sequential, cheap, single GPU -- no concurrency needed (unlike
 # run_main_bolt_vs_orpt_train.sh's BOLT/ORPT-H1 stage). All three train into
-# $BOLT_CONFIG's own run_dir (runs/peptide_main_bolt_v2), matching the old
+# $BOLT_CONFIG's own run_dir (runs/peptide_main_bolt), matching the old
 # eval runbook's step 0 exactly (just moved here since training and eval are
 # now separate concerns).
 #
 # Sanity-check before launching:
-#   ls runs/peptide_main_bolt_v2/checkpoints/  # expect BOLT-10 .. BOLT-600 (all 7)
+#   ls runs/peptide_main_bolt/checkpoints/  # expect BOLT-10 .. BOLT-600 (all 7)
 #
 # Run detached:
 #   nohup bash experiments/eval/run_main_baselines_train.sh \
@@ -23,7 +23,7 @@
 set -euo pipefail
 cd /workspace/BOLT
 
-BOLT_CONFIG=${BOLT_CONFIG:-peptide_experiment/configs/peptide_main_bolt_v2.yaml}
+BOLT_CONFIG=${BOLT_CONFIG:-peptide_experiment/configs/peptide_main_bolt.yaml}
 mkdir -p experiments/eval/logs
 
 echo "[run_main_baselines_train] train MTBO (shared surrogate)"

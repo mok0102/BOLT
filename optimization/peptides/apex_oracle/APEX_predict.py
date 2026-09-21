@@ -77,7 +77,12 @@ def predict_APEX(seq_list):
             seq_rep = onehot_encoding(seq_batch, max_len, word2idx)  # make input
             X_seq = torch.LongTensor(seq_rep).cuda()
 
-            AMP_pred_batch = AMP_model(X_seq).cpu().detach().numpy()  # make predictions
+            # no_grad: inference only, but without this every forward also
+            # allocates and holds the activations needed for a backward pass
+            # that never happens. At batch_size=3000 x max_len=52 x 8 ensemble
+            # members that is the dominant driver of peak GPU allocation here.
+            with torch.no_grad():
+                AMP_pred_batch = AMP_model(X_seq).cpu().numpy()  # make predictions
             AMP_pred_batch = (
                 10 ** (6 - AMP_pred_batch)
             )  # transform back to MICs; When training the APEX models, MICs were transformed by: -np.log10(MICs/float(1000000))
@@ -94,6 +99,21 @@ def predict_APEX(seq_list):
             AMP_sum += AMP_pred
 
     AMP_pred = AMP_sum / float(len(apex_models))  # average the predictions
+
+    # predict_APEX is called in-process (not via subprocess) by long-lived eval
+    # orchestrators (e.g. experiments/eval/fixed_target_rejection_bo.py), once
+    # or more per task over thousands of tasks. Per-call batch sizes vary
+    # (bounded but not identical), so the CUDA caching allocator keeps growing
+    # its reserved-but-idle pool across the whole run instead of returning
+    # freed blocks to the driver. What makes that fatal rather than merely
+    # wasteful: the BO runs themselves are *subprocesses* (see
+    # peptide_experiment/steps.py::run_bo), and a child process cannot reuse
+    # this process's allocator pool -- reserved-but-idle memory here is simply
+    # unusable memory there. Observed as GPU3 reaching 176/178GB after ~1400
+    # tasks, starving the next arm's (MTBO's) own small GP allocation.
+    # Note this does not free the ensemble itself: the models stay resident on
+    # GPU (see the .cuda() above), which is live memory, ~1.6GB floor.
+    torch.cuda.empty_cache()
 
     return AMP_pred
 

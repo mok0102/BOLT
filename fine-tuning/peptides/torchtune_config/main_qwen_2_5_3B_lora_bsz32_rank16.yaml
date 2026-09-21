@@ -1,18 +1,18 @@
-# Prepared for the NEXT main-experiment run -- NOT yet referenced by
-# peptide_main_bolt.yaml/peptide_main_orpt_mi.yaml. Those still use
-# main_qwen_2_5_3B_lora_bsz32.yaml (lora_rank=4), which is what actually
-# produced the currently-completed runs/peptide_main_bolt /
-# runs/peptide_main_orpt_mi (milestone 900, all 7 milestones). rank=4 is
-# too small for a real main-scale (1426-task pool) reproduction of a 3B
-# model -- this file bumps lora_rank 4 -> 16 (alpha=2*rank per this repo's
-# own convention). Wiring this in requires a full main-experiment re-run
-# (trajectory_chain interleaves BO sampling with fine-tuning at every
-# milestone, so a different rank changes what gets sampled from milestone 2
-# onward, not just the final checkpoint) -- a separate, explicitly-confirmed
-# decision, not part of this reproducibility-branch cleanup.
+# Main-experiment BOLT-SFT config (peptide_main_bolt.yaml's torchtune_config),
+# lora_rank=16 (alpha=2*rank per this repo's own convention).
 #
-# Otherwise identical to main_qwen_2_5_3B_lora_bsz32.yaml (multi-device LoRA
-# SFT for BOLT-style peptide training, batch_size=32).
+# batch_size below is a PER-DEVICE value (peptide_experiment/steps.py::
+# distributed_finetune_launch passes it through to every rank unchanged,
+# 2026-09 -- see that function's docstring). 32 is an explicit user choice
+# to make good use of one A100's 40GB, empirically confirmed cheap for this
+# model: batch=32 measured ~14GiB peak (checkpointing at the
+# TransformerSelfAttentionLayer granularity lora_finetune_distributed.py
+# itself uses, 84-real-token sequences padded to 96), batch=128 ~36GiB,
+# batch=160 OOMs -- real headroom exists above 32 if a future run wants a
+# bigger effective global batch (peptide_main_bolt.yaml trains single-GPU,
+# so 32 here IS the global batch; peptide_main_orpt_h1.yaml's SFT stage
+# shares this same file across its 8-GPU mi_parallel_gpus pool, so there the
+# global effective batch is 32*8=256).
 #
 # All *_dir / *_files / *.path fields below are placeholders: peptide_experiment's
 # trajectory_chain.py always overrides them via CLI args, so this file is

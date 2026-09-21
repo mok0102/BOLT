@@ -13,6 +13,7 @@ uses) rather than re-implementing similarity filtering.
 
 from __future__ import annotations
 
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,6 +69,20 @@ def build_eligible_bank_from_init_scores(
             continue
         seen.add(seq)
         if not is_similar_enough(seq, reference_sequence, similarity_threshold):
+            continue
+        if not math.isfinite(score):
+            # The APEX oracle returns NaN for some perfectly ordinary,
+            # similarity-feasible peptides (e.g. 'RPYYRQLEQASRKGNRGFRR', two
+            # edits from task 0's reference), so a NaN here is real oracle
+            # output, not a parse error. Such a candidate passes the
+            # feasibility filter, lands in a shared background, and then makes
+            # the one-step BO's GP raise on its own training data
+            # ("Expected value argument ... to be within the support (Real())
+            # of the distribution Normal(...)"), killing pair construction for
+            # the whole milestone. build_eligible_bank()'s trajectory-CSV path
+            # already drops these via load_scored_sequences' NA-token
+            # handling; this path parses floats directly and had no equivalent
+            # guard. Observed at up to 60/2000 draws per task.
             continue
         bank.append(EligibleCandidate(seq=seq, y=score))
     return bank

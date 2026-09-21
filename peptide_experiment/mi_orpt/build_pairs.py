@@ -20,7 +20,7 @@ Usage (run from the BOLT repo root, matching build_orpt_pairs' cwd):
         --reference-index 0 \\
         --output-csv pairs.csv --output-jsonl pairs.jsonl \\
         --torchtune-config qwen_2_5_3B_lora.yaml --checkpoint-dir BOLT-2 \\
-        --experiment-id <id> --bsz 50 --oracle-budget 5000 \\
+        --experiment-id <id> --bsz 50 --oracle-budget 5000 --milestone 2 \\
         --m 500 --target-pairs-per-task 5 --max-candidates-per-task 20
 """
 
@@ -76,6 +76,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--z-min", type=float, default=1.96)
     parser.add_argument("--delta-t", type=float, default=0.0)
     parser.add_argument("--bo-steps", type=int, choices=[0, 1], default=1, help="1 = actual one-step BO (method.tex); 0 = zero-step ablation (experiments.tex)")
+    parser.add_argument(
+        "--require-h0",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Cumulative H>=0 rule (default): a pair is kept only if the sign(Delta_H) winner is ALSO the winner "
+        "on the two candidates' own pre-rollout y. Vacuous when --bo-steps 0. --no-require-h0 reproduces the "
+        "pre-2026-09 behavior (sign(Delta_H) alone).",
+    )
+    parser.add_argument(
+        "--milestone",
+        type=int,
+        required=True,
+        help="Current BOLT-<milestone> checkpoint being used as pi_ref -- namespaces the one-step-BO work dir "
+        "(mi_onestep_bo/milestone_<m>/task_<i>) so a later milestone's pair construction never reuses an earlier "
+        "milestone's stale init files/trajectory CSV at the same task index.",
+    )
     parser.add_argument("--experiment-id", required=True, help="reused as the one-step BO subprocess's wandb_project_name/work-dir namespace")
     parser.add_argument("--bsz", type=int, required=True, help="deployment acquisition batch size -- one-step's oracle_budget")
     parser.add_argument("--task-specific-args", default="bacteria_0")
@@ -213,7 +229,7 @@ def main() -> None:
                 )
             log_likelihoods = {c.seq: lp for c, lp in zip(bank, log_probs)}
 
-            work_dir_root = cfg.orpt_pairs_dir / "mi_onestep_bo" / f"task_{task_idx:04d}"
+            work_dir_root = cfg.orpt_pairs_dir / "mi_onestep_bo" / f"milestone_{args.milestone:04d}" / f"task_{task_idx:04d}"
             task_pairs = construct_pairs_for_task(
                 cfg=cfg,
                 task_idx=task_idx,
@@ -231,6 +247,7 @@ def main() -> None:
                 work_dir_root=work_dir_root,
                 rng=rng,
                 worker_pool=worker_pool,
+                require_h0=args.require_h0,
             )
             all_pairs.extend(task_pairs)
     finally:

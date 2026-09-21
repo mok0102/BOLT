@@ -1,0 +1,55 @@
+# Main experiment, BOLT-only arm -- reduced-budget schedule (2026-09):
+# init_size=100/oracle_budget=500, matching experiments.tex's own peptide
+# fixture ("Peptide 0-500 (domain-specific oracle budget)") and this
+# machine's timeline (the old init_size=1000/oracle_budget=20000 scale was
+# multi-month per training chain on 8xA100). See
+# peptide_experiment/README.md's config-key table for oracle_budget's exact
+# semantics: it counts calls made AFTER the init pool, so a run costs
+# init_size + oracle_budget = 600 real oracle calls total.
+#
+# table_k_checkpoints capped at 500 (<= oracle_budget) -- the old
+# init_size=1000/1000-checkpoint entry is meaningless at init_size=100
+# (n_proposals indexes a raw proposal-draw count, not the init pool itself,
+# so 200/500 stay meaningful, but nothing beyond oracle_budget does).
+#
+# torchtune_config uses the rank=16 LoRA variant (main_qwen_2_5_3B_lora_
+# bsz32_rank16.yaml) to match peptide_main_orpt_h1.yaml's own rank.
+#
+# mi_parallel_gpus=[0..3]: this arm's own dedicated 4-GPU slice (see
+# experiments/eval/run_main_bolt_vs_orpt_train.sh's header) -- distinct from
+# peptide_main_orpt_h1.yaml's [4..7], so BOLT and ORPT-H1 never contend for
+# the same physical GPU when run concurrently. Also reused for SFT itself
+# (steps.py::distributed_finetune_launch), not just one-step-BO pair
+# construction (irrelevant here, build_orpt=false) -- FSDP-distributes
+# train_milestone()'s SFT across all 4, each at batch_size=32 (the
+# torchtune config's own per-device value, see that file's comment), rather
+# than single-GPU. Once ORPT-H0's own chain (peptide_ablation_orpt_h0.yaml)
+# starts, it takes over this same 4-GPU slice after this arm's chain
+# finishes -- check nvidia-smi fresh at launch time regardless, do not
+# assume these ids are still free (shared machine).
+#
+# cuda_visible_devices="0" (not null): this is what actually pins the
+# per-task BO trajectory-sampling calls (steps.py::run_bo, called directly
+# from trajectory_chain.py's main loop, NOT through
+# distributed_finetune_launch/mi_parallel_gpus) -- by far the dominant cost
+# of this arm's chain (600 single-GPU LOLBO trajectories vs. 7 periodic SFT
+# steps). Left null, those calls are unpinned and would default to whatever
+# the environment's visible GPU 0 resolves to -- usually fine, but not
+# guaranteed to stay inside this arm's [0..3] slice under a truly
+# concurrent multi-experiment launch. Pinning to "0" specifically (rather
+# than round-robining 0-3) is deliberate: run_bo never parallelizes a
+# single task's own trajectory across multiple GPUs, so cycling through 1-3
+# here would only leave them idle anyway -- they're reserved for
+# mi_parallel_gpus's periodic SFT-distribution use instead.
+experiment_id: peptide_main_bolt
+milestones: [10, 20, 50, 250, 400, 500, 600]
+oracle_budget: 500
+init_size: 100
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+build_orpt: false
+torchtune_config: main_qwen_2_5_3B_lora_bsz32_rank16.yaml
+table_k_checkpoints: [20, 50, 100, 200, 500]
+mi_parallel_gpus: ["0", "1", "2", "3"]
+cuda_visible_devices: "0"

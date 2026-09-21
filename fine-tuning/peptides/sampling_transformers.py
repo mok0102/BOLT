@@ -122,7 +122,26 @@ def clean_generation(text: str) -> str:
     return text
 
 
-def generate_answers(model, tokenizer, peptide: str, args, device: str) -> list[str]:
+def generate_for_reference(
+    model,
+    tokenizer,
+    peptide: str,
+    *,
+    device: str,
+    temperature: float,
+    top_p: float,
+    max_new_tokens: int,
+    num_samples: int,
+) -> list[str]:
+    """Sample `num_samples` variants of one reference peptide.
+
+    Split out of generate_answers() (kept below as a thin wrapper, so every
+    existing caller is unaffected) purely so a long-lived worker can call it
+    with an already-loaded model: see peptide_experiment/mi_orpt/
+    warm_sampling_pool.py. Measured motivation -- invoking this module as a
+    CLI once per task spends ~31s loading the checkpoint for ~7s of actual
+    generation.
+    """
     prompt = build_prompt(tokenizer, peptide)
     encoded = tokenizer(prompt, return_tensors="pt")
     encoded = {key: value.to(device) for key, value in encoded.items()}
@@ -132,10 +151,10 @@ def generate_answers(model, tokenizer, peptide: str, args, device: str) -> list[
         generated = model.generate(
             **encoded,
             do_sample=True,
-            temperature=args.temperature,
-            top_p=args.top_p,
-            max_new_tokens=args.max_new_tokens,
-            num_return_sequences=args.samples_per_peptide,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+            num_return_sequences=num_samples,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
@@ -146,6 +165,19 @@ def generate_answers(model, tokenizer, peptide: str, args, device: str) -> list[
         answer = tokenizer.decode(new_tokens, skip_special_tokens=True)
         answers.append(clean_generation(answer))
     return answers
+
+
+def generate_answers(model, tokenizer, peptide: str, args, device: str) -> list[str]:
+    return generate_for_reference(
+        model,
+        tokenizer,
+        peptide,
+        device=device,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        max_new_tokens=args.max_new_tokens,
+        num_samples=args.samples_per_peptide,
+    )
 
 
 def get_source_peptides(args) -> list[str]:
@@ -168,35 +200,31 @@ def get_source_peptides(args) -> list[str]:
     return source_peptides
 
 
-def main() -> None:
-    args = parse_args()
-    args.model_path = args.model_path.expanduser().resolve()
-    if args.tokenizer_path is not None:
-        args.tokenizer_path = args.tokenizer_path.expanduser().resolve()
-    if not args.model_path.exists():
+def load_model_and_tokenizer(model_path, tokenizer_path=None, device: str = "auto", dtype: str = "auto"):
+    """Load the checkpoint + tokenizer once; returns (model, tokenizer, device).
+
+    Extracted verbatim out of main() so that a persistent worker process can
+    hold the result across many generate calls instead of paying this cost per
+    task (peptide_experiment/mi_orpt/warm_sampling_pool.py). Keeps the
+    AutoTokenizer -> PreTrainedTokenizerFast fallback and the pad-token fixup,
+    both of which are load-bearing for this repo's torchtune-materialized
+    checkpoints.
+    """
+    model_path = Path(model_path).expanduser().resolve()
+    if not model_path.exists():
         raise FileNotFoundError(
-            f"Model path does not exist: {args.model_path}. "
+            f"Model path does not exist: {model_path}. "
             "Check that the previous fine-tuning run produced the expected epoch directory."
         )
+    tokenizer_path = Path(tokenizer_path).expanduser().resolve() if tokenizer_path is not None else model_path
 
-    device = resolve_device(args.device)
-    dtype = resolve_dtype(args.dtype, device)
-    tokenizer_path = args.tokenizer_path or args.model_path
+    resolved_device = resolve_device(device)
+    resolved_dtype = resolve_dtype(dtype, resolved_device)
 
-    args.output_file.parent.mkdir(parents=True, exist_ok=True)
-
-    print(f"Using model: {args.model_path}")
+    print(f"Using model: {model_path}")
     print(f"Using tokenizer: {tokenizer_path}")
-    print(f"Using device: {device}")
-    print(f"Using dtype: {dtype}")
-    print(f"Using temperature: {args.temperature}")
-    if args.reference_sequence:
-        print("Using explicit reference sequence")
-    else:
-        print(
-            f"Using reference sequence slice: "
-            f"[{args.start_index}:{args.start_index + args.num_peptides}]"
-        )
+    print(f"Using device: {resolved_device}")
+    print(f"Using dtype: {resolved_dtype}")
 
     try:
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
@@ -217,26 +245,58 @@ def main() -> None:
         tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
-        args.model_path,
-        torch_dtype=dtype,
+        model_path,
+        torch_dtype=resolved_dtype,
         trust_remote_code=True,
     )
-    model.to(device)
+    model.to(resolved_device)
     model.eval()
+    return model, tokenizer, resolved_device
+
+
+def write_records(output_file, records) -> None:
+    """Single source of truth for this script's jsonl format.
+
+    Both main() and warm_sampling_pool.py's worker go through here, so the CLI
+    path and the pooled path cannot drift apart -- downstream
+    sampled_output_from_ft/make_initialization_data.py parses these files and
+    would silently mis-read a divergent schema.
+    """
+    output_file = Path(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with output_file.open("w") as f:
+        for record in records:
+            f.write(json.dumps(record) + "\n")
+
+
+def main() -> None:
+    args = parse_args()
+    model, tokenizer, device = load_model_and_tokenizer(
+        args.model_path, args.tokenizer_path, args.device, args.dtype
+    )
+
+    print(f"Using temperature: {args.temperature}")
+    if args.reference_sequence:
+        print("Using explicit reference sequence")
+    else:
+        print(
+            f"Using reference sequence slice: "
+            f"[{args.start_index}:{args.start_index + args.num_peptides}]"
+        )
 
     source_peptides = get_source_peptides(args)
     print("Reference sequences to sample:")
     for peptide_index, peptide in enumerate(source_peptides, start=1):
         print(f"  {peptide_index}: {peptide}")
 
-    with args.output_file.open("w") as f:
-        for peptide in tqdm(source_peptides, desc="Generating variants"):
-            answers = generate_answers(model, tokenizer, peptide, args, device)
-            record = {
-                "source_peptide": peptide,
-                "generated_answers": answers,
-            }
-            f.write(json.dumps(record) + "\n")
+    records = [
+        {
+            "source_peptide": peptide,
+            "generated_answers": generate_answers(model, tokenizer, peptide, args, device),
+        }
+        for peptide in tqdm(source_peptides, desc="Generating variants")
+    ]
+    write_records(args.output_file, records)
 
     print(f"Saved results to: {args.output_file}")
 

@@ -54,26 +54,137 @@ def _run(cmd: list, cwd: Path, cfg: ExperimentConfig | None = None) -> None:
     )
 
 
-def cleanup_intermediate_epochs(ckpt_dir: Path, final_ckpt: Path) -> None:
+def materialize_hf_checkpoint(ckpt_dir: Path, epoch: int, base_checkpoint_dir: Path) -> Path:
+    """torchtune==0.4.0 (pinned in this container -- /opt/bolt-constraints.txt,
+    a torch/torchvision/torchao/transformers-CUDA-matched stack) saves each
+    epoch's full merged (base+LoRA) checkpoint as separate
+    hf_model_<cpt_idx>_<epoch>.pt shards directly in output_dir -- raw
+    torch.save with a non-standard filename, no model.safetensors.index.json.
+    Three downstream consumers all need a real HF-standard checkpoint dir
+    here instead of that:
+      - fine-tuning/peptides/sampling_transformers.py's
+        AutoModelForCausalLM.from_pretrained()/AutoTokenizer.from_pretrained()
+        (task sampling)
+      - torchtune's own FullModelHFCheckpointer.load_checkpoint(), reused
+        verbatim (same hardcoded checkpoint_files list from the
+        torchtune_config YAML) to reload this milestone's checkpoint as the
+        DPO stage's base model (peptide_experiment/orpt.py)
+      - mi_orpt/likelihood.py's own torchtune-config-instantiated
+        checkpointer/tokenizer, for reference-model log-likelihood scoring
+
+    This converts each hf_model_<cpt_idx>_<epoch>.pt shard into
+    model-<cpt_idx>-of-<N>.safetensors -- the exact filenames every
+    torchtune_config's checkpoint_files list hardcodes -- then copies the
+    base checkpoint's OWN model.safetensors.index.json verbatim: LoRA
+    merging only changes tensor values, never which keys exist or which
+    shard they came from (confirmed: hf_model_<cpt_idx>_<epoch>.pt's cpt_idx
+    numbering is built by torchtune from loading those same base
+    checkpoint_files in order), so the original weight_map/total_size stay
+    exactly correct. Also copies the base checkpoint's tokenizer files
+    alongside -- every tune-run invocation in this repo only ever points
+    tokenizer.path/merges_file at the BASE checkpoint, so no per-milestone
+    copy is ever produced automatically, yet all three consumers above
+    default to loading the tokenizer from the checkpoint dir itself.
+
+    Idempotent: returns immediately once model.safetensors.index.json
+    already exists in ckpt_dir. Shared by both the SFT
+    (trajectory_chain.py) and ORPT (orpt.py) training steps.
+    """
+    index_path = ckpt_dir / "model.safetensors.index.json"
+    if index_path.exists():
+        return ckpt_dir
+
+    import torch
+    from safetensors.torch import save_file
+
+    shards = sorted(ckpt_dir.glob(f"hf_model_*_{epoch}.pt"))
+    if not shards:
+        raise FileNotFoundError(
+            f"materialize_hf_checkpoint: no hf_model_*_{epoch}.pt shards in {ckpt_dir} "
+            "(expected torchtune's FullModelHFCheckpointer to have written them)"
+        )
+    num_shards = len(shards)
+    for cpt_idx, shard_path in enumerate(shards, start=1):
+        state_dict = torch.load(shard_path, map_location="cpu", weights_only=True)
+        # safetensors refuses to write two keys that alias the same storage
+        # (e.g. tied embeddings) -- shouldn't occur here (torchtune's own
+        # weight_map, built from loading the base checkpoint's un-tied
+        # 434-key export, already excludes the tied lm_head.weight key), but
+        # cloning any duplicate is a cheap, unconditional guard rather than
+        # a discovery made the hard way mid-run.
+        seen_ptrs: dict[int, str] = {}
+        for key, tensor in state_dict.items():
+            ptr = tensor.data_ptr()
+            if ptr in seen_ptrs:
+                state_dict[key] = tensor.clone()
+            else:
+                seen_ptrs[ptr] = key
+        out_path = ckpt_dir / f"model-{cpt_idx:05d}-of-{num_shards:05d}.safetensors"
+        save_file(state_dict, out_path, metadata={"format": "pt"})
+
+    base_index = base_checkpoint_dir / "model.safetensors.index.json"
+    if not base_index.exists():
+        raise FileNotFoundError(
+            f"materialize_hf_checkpoint: base checkpoint has no model.safetensors.index.json at {base_index}"
+        )
+    shutil.copy2(base_index, index_path)
+
+    for tokenizer_file in ("vocab.json", "merges.txt", "tokenizer.json", "tokenizer_config.json"):
+        src = base_checkpoint_dir / tokenizer_file
+        dst = ckpt_dir / tokenizer_file
+        if src.exists() and not dst.exists():
+            shutil.copy2(src, dst)
+
+    return ckpt_dir
+
+
+def cleanup_intermediate_epochs(ckpt_dir: Path, final_epoch: int) -> None:
     """torchtune's lora_finetune_distributed/lora_dpo_distributed recipes save
     a full merged checkpoint after every epoch with no "final epoch only"
-    option, so training for N epochs briefly leaves N full multi-GB
-    checkpoints on disk. Delete every epoch_N dir except the final one once
-    training is confirmed done. Shared by both the SFT (trajectory_chain.py)
-    and ORPT (orpt.py) training steps.
+    option, so training for N epochs leaves N full multi-GB checkpoints on
+    disk. With torchtune==0.4.0's flat (non-nested) output_dir layout (see
+    materialize_hf_checkpoint's docstring), those are hf_model_<cpt_idx>_<e>.pt
+    / adapter_<e>.pt files distinguished only by the epoch number embedded in
+    each filename, not by an epoch_<e>/ subdirectory as an older torchtune
+    version would have produced. Deletes every non-final epoch's raw shard/
+    adapter files, and -- once materialize_hf_checkpoint has converted them --
+    final_epoch's own now-redundant raw .pt shards too. Also drops the
+    intermediate-checkpoint-only recipe_state.pt (irrelevant once training
+    has finished). Shared by both the SFT (trajectory_chain.py) and ORPT
+    (orpt.py) training steps.
     """
-    for epoch_dir in ckpt_dir.glob("epoch_*"):
-        if epoch_dir.is_dir() and epoch_dir != final_ckpt:
-            shutil.rmtree(epoch_dir)
+    materialized = (ckpt_dir / "model.safetensors.index.json").exists()
+    for pattern in ("hf_model_*_*.pt", "adapter_*.pt"):
+        for f in ckpt_dir.glob(pattern):
+            try:
+                epoch = int(f.stem.rsplit("_", 1)[-1])
+            except ValueError:
+                continue  # defensive -- every current match of these globs is epoch-suffixed
+            if epoch != final_epoch or materialized:
+                f.unlink()
+    recipe_state = ckpt_dir / "recipe_state.pt"
+    if recipe_state.exists():
+        recipe_state.unlink()
 
 
 def distributed_finetune_launch(
     cfg: ExperimentConfig, torchtune_config_name: str, fine_tuning_dir: Path
-) -> tuple[list[str], ExperimentConfig]:
-    """Returns (extra `tune run` config overrides, a possibly-GPU-widened cfg
-    to pass as _run()'s `cfg=` for CUDA_VISIBLE_DEVICES) for SFT/DPO
+) -> tuple[list[str], list[str], ExperimentConfig]:
+    """Returns (torchrun-level flags to insert before `--config`, extra
+    `tune run` config overrides to append after it, a possibly-GPU-widened
+    cfg to pass as _run()'s `cfg=` for CUDA_VISIBLE_DEVICES) for SFT/DPO
     fine-tuning. Shared by trajectory_chain.py::train_milestone() and
     orpt.py::train_orpt_milestone().
+
+    The torchrun-level flags carry --master-port: `tune run`'s distributed
+    launcher defaults to a fixed rendezvous port (29500) regardless of
+    which GPUs are used, so two concurrent multi-GPU launches on the same
+    host collide on it even with fully disjoint mi_parallel_gpus (confirmed
+    the hard way this session -- one pipeline's `tune run` failed with
+    EADDRINUSE while another's, on different GPUs entirely, was already
+    bound to it). Deriving the port from mi_parallel_gpus[0] (29500 + that
+    GPU id) gives each disjoint GPU group its own fixed, deterministic port
+    with no new config field -- e.g. GPUs [0..3] -> 29500, [4..7] -> 29504.
 
     cfg.mi_parallel_gpus, if set, is reused here too -- not just for
     matched-intervention pair construction's warm-worker pool (see
@@ -82,37 +193,40 @@ def distributed_finetune_launch(
     host has enough headroom for both uses. Unset (default): completely
     unchanged behavior, --nproc_per_node stays 1, cfg passed through as-is.
 
-    When scaling up, the *effective global* batch size (torchtune's own
-    per-device-batch_size * world_size convention for its distributed
-    recipes) is kept equal to the single-GPU config's own batch_size, by
-    dividing it by nproc_per_node -- multi-GPU here is meant purely as a
-    wall-clock speedup, not a silent change to training dynamics. Read
-    directly from the torchtune config YAML since ExperimentConfig itself
-    has no batch_size field for SFT/DPO (that lives entirely in the recipe
-    config, unlike cfg.bsz which is the BO acquisition batch size).
+    The torchtune config YAML's own `batch_size` is a PER-DEVICE value,
+    passed through to every rank unchanged (2026-09: previously divided by
+    nproc_per_node to hold the *global* effective batch constant across a
+    1-GPU vs. N-GPU launch of the same YAML -- deliberately dropped per
+    explicit user request to instead max out each A100's 40GB: FSDP's
+    per-rank data-parallel batch is what determines a single GPU's memory
+    footprint, so a YAML value tuned to that ceiling (empirically ~32 for
+    this repo's 3B-parameter/LoRA-rank-16 SFT config: batch=32 measured at
+    ~27GiB peak, batch=64 OOMs, on a single 40GB A100 -- see
+    imp_plan/ or this session's memory probe for the raw numbers) now scales
+    the *global* effective batch linearly with GPU count instead of holding
+    it fixed -- standard data-parallel practice, and the entire reason
+    mi_parallel_gpus exists here (wall-clock AND throughput scaling, not
+    just wall-clock at a fixed global batch). Read directly from the
+    torchtune config YAML since ExperimentConfig itself has no batch_size
+    field for SFT/DPO (that lives entirely in the recipe config, unlike
+    cfg.bsz which is the BO acquisition batch size).
     """
     if not cfg.mi_parallel_gpus:
-        return [], cfg
+        return [], [], cfg
 
     nproc_per_node = len(cfg.mi_parallel_gpus)
+    master_port = 29500 + int(cfg.mi_parallel_gpus[0])
     with open(fine_tuning_dir / "torchtune_config" / torchtune_config_name) as f:
-        base_batch_size = yaml.safe_load(f)["batch_size"]
-    per_gpu_batch_size = max(1, base_batch_size // nproc_per_node)
-    effective_batch_size = per_gpu_batch_size * nproc_per_node
+        per_gpu_batch_size = yaml.safe_load(f)["batch_size"]
     print(
         f"[distributed finetune] {torchtune_config_name}: nproc_per_node={nproc_per_node}, "
-        f"batch_size {base_batch_size} -> {per_gpu_batch_size}/device "
-        f"(effective global batch size {effective_batch_size})"
+        f"batch_size={per_gpu_batch_size}/device "
+        f"(effective global batch size {per_gpu_batch_size * nproc_per_node}), "
+        f"master_port={master_port}"
     )
-    if effective_batch_size != base_batch_size:
-        print(
-            f"[distributed finetune] WARNING: batch_size={base_batch_size} isn't evenly "
-            f"divisible by nproc_per_node={nproc_per_node} -- effective global batch size "
-            f"{effective_batch_size} differs slightly from the single-GPU config's {base_batch_size}"
-        )
 
     launch_cfg = dataclasses.replace(cfg, cuda_visible_devices=",".join(cfg.mi_parallel_gpus))
-    return [f"batch_size={per_gpu_batch_size}"], launch_cfg
+    return ["--master-port", str(master_port)], [f"batch_size={per_gpu_batch_size}"], launch_cfg
 
 
 def _pad_to_size(init_path: Path, scores_path: Path, target_size: int) -> None:
@@ -240,6 +354,8 @@ def sample_and_build_init(
     task_idx: int,
     work_dir: Path,
     temperature: float | None = None,
+    *,
+    sampling_pool: "object | None" = None,
 ) -> tuple[Path, Path]:
     """Sample candidates for peptide task `task_idx` from `model_path`
     (a checkpoint dir, or the raw base model for task 0 / pre-milestone
@@ -250,12 +366,37 @@ def sample_and_build_init(
     default (1) -- every existing call site's behavior is unchanged. A float
     value overrides it, e.g. for mi_orpt's dedicated candidate-pool sampling
     (cfg.mi_candidate_temperature) without affecting any other caller.
+
+    sampling_pool: None (default) keeps the original behavior exactly -- one
+    fresh `sampling_transformers.py` subprocess per attempt. A
+    mi_orpt.warm_sampling_pool.SamplingPool for THIS call's GPU instead reuses
+    a worker that already holds `model_path` resident, removing the ~31s
+    per-call checkpoint load that dominated this step (~38s/call for ~7s of
+    generation). Typed loosely so this module needs no import of the pool
+    module, which must stay free of eager torch imports. The caller is
+    responsible for the pool matching `model_path` -- the worker re-checks and
+    fails loudly if it doesn't. Falls back to the subprocess path if the pool
+    breaks, so a dead worker degrades throughput rather than the run.
     """
     work_dir.mkdir(parents=True, exist_ok=True)
     init_path = work_dir / f"task_{task_idx:04d}_init.txt"
     scores_path = work_dir / f"task_{task_idx:04d}_scores.csv"
     if init_path.exists() and scores_path.exists():
         print(f"[task {task_idx}] init data already exists at {init_path}, skipping")
+        # Re-finalize rather than trusting the files outright: both are written
+        # INSIDE the retry loop below, after every attempt, so a run killed
+        # mid-retry leaves a file that exists but never reached _pad_to_size /
+        # _ensure_constraint_feasible -- i.e. it can be short of cfg.init_size
+        # and below the feasibility floor, yet still look "already done" here.
+        # That failure is silent and only surfaces much later as an
+        # unexplainably undersized eligible bank in mi_orpt pair construction
+        # (hit for real: two tasks sat at 98/110 feasible against the 115 the
+        # bank needed, purely because their sampling was interrupted). Both
+        # calls are idempotent and cheap no-ops for a well-formed file --
+        # _ensure_constraint_feasible returns before touching the oracle when
+        # the floor is already met -- so this costs nothing in the normal case.
+        _pad_to_size(init_path, scores_path, cfg.init_size)
+        _ensure_constraint_feasible(cfg, task_idx, init_path, scores_path)
         return init_path, scores_path
 
     fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
@@ -283,7 +424,37 @@ def sample_and_build_init(
         ]
         if temperature is not None:
             cmd += ["--temperature", temperature]
-        _run(cmd, cwd=fine_tuning_dir, cfg=cfg)
+
+        used_pool = False
+        if sampling_pool is not None and not sampling_pool.broken:
+            from concurrent.futures.process import BrokenProcessPool
+
+            try:
+                # Mirror _run()'s own "+ (cwd) cmd" echo, including the literal
+                # `sampling_transformers` token and the same flag names: the
+                # per-task sampling timings in this repo are read off these log
+                # lines, and the pooled path would otherwise go dark.
+                print(
+                    f"+ [warm-sampling-pool gpu={sampling_pool.gpu}] sampling_transformers "
+                    f"--model-path {model_path} --start-index {task_idx} "
+                    f"--samples-per-peptide {samples_per_peptide} --output-file {attempt_jsonl}"
+                )
+                sampling_pool.generate(
+                    task_idx=task_idx,
+                    samples_per_peptide=samples_per_peptide,
+                    output_file=attempt_jsonl,
+                    temperature=temperature,
+                )
+                used_pool = True
+            except BrokenProcessPool as e:
+                # Latched on the pool itself, so later attempts/tasks on this
+                # GPU go straight to the CLI instead of re-raising every time.
+                print(
+                    f"[task {task_idx}] warm sampling pool on gpu {sampling_pool.gpu} is broken "
+                    f"({e!r}); falling back to the subprocess path for the rest of this segment"
+                )
+        if not used_pool:
+            _run(cmd, cwd=fine_tuning_dir, cfg=cfg)
         sample_jsonls.append(attempt_jsonl)
         _run(
             [

@@ -1,0 +1,105 @@
+# Main experiment, matched-intervention one-step-BO ORPT arm -- reduced-
+# budget schedule (2026-09), see peptide_main_bolt.yaml's comment for the
+# init_size/oracle_budget rationale (both configs must agree on these, plus
+# milestones/similarity_threshold, for the eventual BOLT-vs-ORPT comparison
+# to be apples-to-apples).
+#
+# This is the paper's actual method: mi_bo_steps=1 (real one-step BO during
+# pair construction, method.tex's U_1) AND mi_require_h0 at its default
+# (true) -- a preference pair is kept only when the one-step-BO winner is
+# ALSO the winner on the two candidates' own pre-rollout y (the cumulative
+# H>=0 rule; see mi_orpt/pair_construction.py::construct_pairs_for_task's
+# require_h0 docstring). Own experiment_id/run_dir -- independent trajectory
+# chain from task 0, since matched-intervention's self-reinforcing sampling
+# genuinely diverges once ORPT starts sampling subsequent tasks.
+#
+# mi_max_candidates_per_task=16 (down from an earlier 60) and
+# mi_max_tasks_per_milestone=50 (new -- was unset/unbounded) are this
+# session's own cost cuts for the reduced-budget schedule: pair-construction
+# cost is linear in both max_candidates_per_task and the number of tasks
+# used per milestone, and build_orpt_pairs() otherwise re-runs over EVERY
+# task in [0, milestone) at every one of the 7 milestones (10+20+...+600 =
+# 1830 task-constructions/chain without the cap). mi_num_backgrounds=4
+# (down from 8, explicit user choice for further speed -- each candidate
+# costs exactly mi_num_backgrounds real-BO calls) trades away some of the
+# reliability filter's statistical power (SE ~ 1/sqrt(M)); a much smaller
+# smoke-scale (m~5) test previously found M<8 yielding ~0 trainable pairs,
+# but that was at a far noisier/smaller pool -- watch early-milestone pair
+# yield in the logs ("N pair(s) rejected by the H0 necessary condition" /
+# "kept K/target") and reconsider if it collapses at this real scale.
+# peptide_ablation_orpt_h0.yaml must match this value exactly (both do).
+# BOLT-<m>'s own SFT dataset still uses every task in [0, milestone) --
+# mi_max_tasks_per_milestone only subsamples the DPO stage's pair pool.
+#
+# orpt_beta=0.25/orpt_lr=2e-5: grid-search-confirmed winning ORPT
+# hyperparameters from an earlier session (see git history for the sweep
+# cells this used to live under, peptide_experiment/configs/gridsearch/,
+# removed as stale once their conclusion was baked in here).
+#
+# mi_parallel_gpus=[4..7]: this arm's own dedicated 4-GPU slice, disjoint
+# from peptide_main_bolt.yaml's [0..3] (which peptide_ablation_orpt_h0.yaml
+# takes over once that arm's own chain finishes) -- see
+# experiments/eval/run_main_bolt_vs_orpt_train.sh's header for the full
+# concurrent-pipeline layout. cuda_visible_devices="4" (not null) pins the
+# per-task BO trajectory-sampling calls the same way peptide_main_bolt.yaml's
+# own comment explains (steps.py::run_bo, called outside
+# distributed_finetune_launch, never parallelized across multiple GPUs for
+# a single task). Check nvidia-smi fresh at launch time regardless -- do
+# not assume these ids are still free (shared machine).
+experiment_id: peptide_main_orpt_h1
+milestones: [10, 20, 50, 250, 400, 500, 600]
+mi_parallel_gpus: ["4", "5", "6", "7"]
+cuda_visible_devices: "4"
+oracle_budget: 500
+init_size: 100
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+torchtune_config: main_qwen_2_5_3B_lora_bsz32_rank16.yaml
+build_orpt: true
+orpt_epochs: 1
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_torchtune_config: main_qwen_2_5_3B_lora_dpo_bsz32_rank16.yaml
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 4
+mi_tau_q: 1.0
+mi_z_min: 1.0
+mi_delta_t: 0.0
+mi_target_pairs_per_task: 30
+mi_max_candidates_per_task: 16
+mi_max_tasks_per_milestone: 50
+mi_bo_steps: 1
+# mi_require_h0 left at its default (true) -- this IS the H0-AND-H1 arm.
+
+# 2026-09: at this reduced budget, the raw BO trajectory CSV essentially
+# never yields eligible (similarity-feasible) candidates beyond init_size
+# itself -- observed empirically: milestone 10's bank capped at exactly 100
+# (== init_size) across all 10 tasks, vs. min_bank_size_needed(100,16)=115,
+# because LOLBO's latent exploration wanders into degenerate sequences
+# (homopolymer runs etc.) that fail similarity_threshold. This was never a
+# problem at the original init_size=1000/oracle_budget=20000 scale (same
+# low pass-rate, but a much larger absolute pool). Rather than compensate
+# by loosening similarity_threshold (would change what counts as a valid
+# pair) or shrinking mi_max_candidates_per_task to ~2 (leaves almost no
+# room for pairwise comparison), sample a dedicated candidate pool directly
+# from BOLT-<milestone> instead of the noisy BO trajectory -- exactly what
+# this field is for (orpt.py's matched_intervention branch, added in an
+# earlier commit but never enabled in any committed config until now).
+# temperature=1.5 matches the value this feature's own docstring cites as
+# already empirically validated (57-78% feasible-unique-draw rate) -- but
+# that rate doesn't hold at milestone 10 specifically: measured directly
+# against this run's actual BOLT-10 checkpoint, the real feasible-unique
+# rate is only ~10% (23/230 passed similarity_threshold=0.75, uniformly
+# across all 10 tasks -- confirmed not a reference-mismatch bug, each
+# task's candidates only pass against their OWN reference). Plausible cause:
+# BOLT-10 has only been SFT'd on 10 real tasks so far (a thin signal vs.
+# whatever checkpoint the docstring's 57-78% figure came from), so it still
+# generates fairly divergent output at temp=1.5. config.py's auto-computed
+# default (2x min_bank_size_needed) assumed the higher rate and fell short
+# (bank capped at 23 vs. the needed 115) -- overriding explicitly with
+# enough margin for the real ~10% rate instead of relying on that default.
+mi_candidate_temperature: 1.5
+mi_candidate_pool_size: 2000
+
+table_k_checkpoints: [20, 50, 100, 200, 500]

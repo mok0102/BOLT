@@ -146,7 +146,12 @@ def run_candidates_one_step(
     return results
 
 
-def zero_step_utility(background: list[EligibleCandidate], candidate: EligibleCandidate) -> float:
-    """The zero-step ablation (experiments.tex sec:ablations): the pool's
-    own best already-known value, no BO round, zero additional oracle cost."""
-    return max([c.y for c in background] + [candidate.y])
+def zero_step_utility(candidate: EligibleCandidate) -> float:
+    """H0 (experiments.tex sec:ablations, 2026-09 redefinition): the
+    candidate's own already-known objective value -- no shared base set,
+    no BO round, zero additional oracle cost. (Previously
+    max(background_ys + [candidate.y]), which saturated whenever both
+    compared candidates fell below the background's own incumbent,
+    producing delta=0 and dropping the pair; a pure-y comparison never
+    saturates.)"""
+    return candidate.y

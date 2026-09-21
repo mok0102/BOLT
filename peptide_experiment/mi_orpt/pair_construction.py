@@ -77,6 +77,7 @@ def construct_pairs_for_task(
     work_dir_root: Path,
     rng: random.Random,
     worker_pool: ProcessPoolExecutor | None = None,
+    require_h0: bool = True,
 ) -> list[dict]:
     """Returns kept preference-pair records
     {reference_sequence, chosen_sequence, chosen_score, rejected_sequence,
@@ -107,7 +108,16 @@ def construct_pairs_for_task(
     run_candidates_one_step, which submits every candidate's every
     background evaluation to it in one batch -- letting multiple
     candidates' one-step-BO calls run concurrently across the whole pool.
-    None falls back to serial dispatch."""
+    None falls back to serial dispatch.
+
+    require_h0: True (default, the 2026-09 cumulative H>=0 rule): a pair
+    is kept only if the sign(Delta_H) winner is ALSO the winner on the two
+    candidates' own pre-rollout y (H0) -- i.e. the BO-rollout preference
+    must agree with the raw-objective preference, not just exist on its
+    own. False reproduces the pre-2026-09 behavior (sign(Delta_H) alone).
+    Vacuous when bo_steps=0: there Delta_0 == y_new - y_old by
+    construction, so the two signs always agree and no pair is ever
+    dropped by this gate."""
     min_needed = min_bank_size_needed(m, num_reserved=max_candidates)
     if len(bank) < min_needed:
         print(f"[mi_orpt pair_construction] task ref={reference_sequence!r}: bank={len(bank)} (need >={min_needed}), skipping")
@@ -143,9 +153,14 @@ def construct_pairs_for_task(
         u1 = run_candidates_one_step(cfg, task_idx, backgrounds, candidate_pool, work_dir_root, seeds, worker_pool=worker_pool)
     else:
         assert bo_steps == 0, bo_steps
-        u1 = [[zero_step_utility(background, candidate) for background in backgrounds] for candidate in candidate_pool]
+        # H0: constant across backgrounds by construction (see
+        # zero_step_utility) -- se below is therefore always 0 and z
+        # always clears z_min, so target_pairs' truncation (below)
+        # effectively ranks candidates by |y_new - y_old| alone.
+        u1 = [[zero_step_utility(candidate)] * len(backgrounds) for candidate in candidate_pool]
 
     kept_pairs: list[dict] = []
+    n_h0_rejected = 0
     for new_idx in range(len(candidate_pool)):
         for old_idx in range(new_idx):
             diffs = [u1[new_idx][r] - u1[old_idx][r] for r in range(len(backgrounds))]
@@ -160,6 +175,13 @@ def construct_pairs_for_task(
 
             x_new, x_old = candidate_pool[new_idx], candidate_pool[old_idx]
             chosen, rejected = (x_new, x_old) if delta > 0 else (x_old, x_new)
+            if require_h0 and chosen.y <= rejected.y:
+                # Cumulative H>=0 rule: the BO-rollout winner must also win
+                # on raw pre-rollout y, or the pair is dropped entirely
+                # (not flipped -- disagreement means no reliable
+                # preference, not a reversed one).
+                n_h0_rejected += 1
+                continue
             kept_pairs.append(
                 {
                     "reference_sequence": reference_sequence,
@@ -178,6 +200,7 @@ def construct_pairs_for_task(
 
     print(
         f"[mi_orpt pair_construction] task ref={reference_sequence!r}: "
-        f"kept {len(kept_pairs)}/{target_pairs} target after {len(candidate_pool)} candidates evaluated (cap {max_candidates})"
+        f"kept {len(kept_pairs)}/{target_pairs} target after {len(candidate_pool)} candidates evaluated "
+        f"(cap {max_candidates}), {n_h0_rejected} pair(s) rejected by the H0 necessary condition"
     )
     return kept_pairs

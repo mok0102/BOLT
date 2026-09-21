@@ -141,6 +141,27 @@ class ExperimentConfig:
     # ranks by the pool's own best already-known value, no BO round, no
     # additional oracle cost.
     mi_bo_steps: int = 1
+    # True (default): cumulative H>=0 rule -- a preference pair is kept
+    # only if the sign(Delta_H) winner (mi_bo_steps's own comparison) is
+    # ALSO the winner on the two candidates' own pre-rollout y (H0): the
+    # chosen candidate's initial objective value must be better, not just
+    # its BO-rollout outcome. False reproduces the pre-2026-09 behavior
+    # (sign(Delta_H) alone decides the label). Vacuous when mi_bo_steps=0
+    # (there Delta_0 == y_new - y_old by construction, so the two signs
+    # always agree and no pair is ever dropped by this gate) -- see
+    # mi_orpt/pair_construction.py::construct_pairs_for_task's require_h0.
+    mi_require_h0: bool = True
+    # None (default): every task in [0, milestone) is used for pair
+    # construction, same as BOLT-<milestone>'s own SFT dataset. An int:
+    # caps pair construction to a fixed-seed uniform subsample of that many
+    # tasks (peptide_experiment/orpt.py::build_orpt_pairs) -- pair
+    # construction cost is linear in task count (each task costs
+    # mi_max_candidates_per_task * mi_num_backgrounds real-BO calls under
+    # mi_bo_steps=1), so at the largest milestones this bounds a cost that
+    # would otherwise grow with the whole training-task schedule.
+    # BOLT-<milestone>'s own SFT dataset is unaffected -- only the DPO
+    # stage's pair pool is subsampled.
+    mi_max_tasks_per_milestone: int | None = None
     # CUDA device ids to round-robin across for concurrent one-step BO
     # calls during matched_intervention pair construction (mi_orpt/
     # one_step_evaluator.py). Each of a candidate's M background
@@ -327,13 +348,24 @@ class ExperimentConfig:
         return range(0, n)
 
     def milestone_checkpoint_dir(self, milestone: int) -> Path:
-        return self.checkpoints_dir / f"BOLT-{milestone}" / f"epoch_{self.sft_epochs - 1}"
+        # No /epoch_<N> subdirectory (contrast optformer_checkpoint_dir
+        # below, and this method's own pre-2026-09 behavior): torchtune==0.4.0
+        # (pinned in this container -- /opt/bolt-constraints.txt) writes
+        # every epoch's checkpoint shards flat into output_dir, distinguished
+        # only by an epoch number embedded in each filename, not a
+        # subdirectory -- see steps.py::materialize_hf_checkpoint's
+        # docstring for the full checkpoint-format story. train_milestone()
+        # only calls this once cfg.sft_epochs's last epoch has been
+        # materialized into a real HF-standard checkpoint (model.safetensors
+        # shards + index.json) here.
+        return self.checkpoints_dir / f"BOLT-{milestone}"
 
     def orpt_checkpoint_dir(self, milestone: int) -> Path:
         """ORPT-<milestone>'s final checkpoint: a DPO stage trained on top of
-        that same milestone's own BOLT-<milestone>.
+        that same milestone's own BOLT-<milestone>. No /epoch_<N>
+        subdirectory -- see milestone_checkpoint_dir's comment above.
         """
-        return self.checkpoints_dir / f"ORPT-{milestone}" / f"epoch_{self.orpt_epochs - 1}"
+        return self.checkpoints_dir / f"ORPT-{milestone}"
 
     def mtbo_checkpoint_dir(self, milestone: int) -> Path:
         """MTBO-<milestone>'s trained shared-surrogate state dict (see
@@ -347,6 +379,14 @@ class ExperimentConfig:
         stage trained on history-conditioned windows (see
         optformer.py::train_optformer), retrained at each milestone on only
         that milestone's completed trajectories.
+
+        Still has the /epoch_<N> subdirectory milestone_checkpoint_dir()/
+        orpt_checkpoint_dir() dropped above -- optformer.py's own
+        train_optformer() wasn't touched this session (out of scope: OptFormer
+        is a baseline, not part of the H0/H1 pair-construction or budget
+        work), so it likely has the identical torchtune==0.4.0
+        checkpoint-format mismatch materialize_hf_checkpoint's docstring
+        describes, just not yet hit/fixed here.
         """
         return self.checkpoints_dir / f"OptFormer-{milestone}" / f"epoch_{self.optformer_epochs - 1}"
 

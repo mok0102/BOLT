@@ -1,18 +1,20 @@
-# Prepared for the NEXT main-experiment run -- NOT yet referenced by
-# peptide_main_orpt_mi.yaml's orpt_torchtune_config. It still uses
-# main_qwen_2_5_3B_lora_dpo_bsz32.yaml (lora_rank=4), which is what actually
-# produced the currently-completed runs/peptide_main_orpt_mi (milestone 900,
-# all 7 milestones). rank=4 is too small for a real main-scale (1426-task
-# pool) reproduction of a 3B model -- this file bumps lora_rank 4 -> 16
-# (alpha=2*rank per this repo's own convention), matching
-# main_qwen_2_5_3B_lora_bsz32_rank16.yaml's own SFT-side bump so the
-# BOLT-SFT and ORPT-MI-DPO stages keep the same adapter capacity. Wiring
-# this in requires a full main-experiment re-run (see that file's own
-# comment for why) -- a separate, explicitly-confirmed decision, not part
-# of this reproducibility-branch cleanup.
+# Main-experiment ORPT-DPO config (peptide_main_orpt_h1.yaml/
+# peptide_ablation_orpt_h0.yaml's orpt_torchtune_config), lora_rank=16
+# (alpha=2*rank), matching main_qwen_2_5_3B_lora_bsz32_rank16.yaml's own
+# SFT-side rank so the BOLT-SFT and ORPT-DPO stages keep the same adapter
+# capacity.
 #
-# Otherwise identical to main_qwen_2_5_3B_lora_dpo_bsz32.yaml (multi-device
-# LoRA DPO/ORPT finetuning, batch_size=32).
+# batch_size below is a PER-DEVICE value, same convention as
+# main_qwen_2_5_3B_lora_bsz32_rank16.yaml's own comment describes -- always
+# runs distributed (both ORPT configs set mi_parallel_gpus across all 8
+# GPUs), so the effective global batch here is 32*8=256. 32/device is an
+# explicit user choice, empirically confirmed safe for DPO specifically
+# (which forwards chosen+rejected concatenated per pair -- effectively 2x
+# the sequences of an equal-sized SFT batch): batch=32 pairs measured
+# ~25GiB peak, batch=48 ~34GiB, batch=64 OOMs (same measurement setup as
+# the SFT config's comment; a single, non-FSDP-sharded GPU, so real 8-way
+# FSDP sharding of params/optimizer state leaves strictly more headroom
+# than these numbers suggest).
 #
 # All *_dir / *_files / *.path fields below are placeholders: peptide_experiment's
 # orpt.py always overrides them via CLI args, so this file is portable across

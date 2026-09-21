@@ -7,15 +7,17 @@ tolerate.
 
 Two distinct eval procedures live here, targeting two distinct paper
 artifacts (confirmed via Appendix D.6, p.24):
-- run_heldout_eval(): a full BO run per task (20,000 oracle calls) -- what
-  Figure 1/2's scaling curve actually reports (a "standard STBO loop
-  proceeds unchanged" after initialization, per Figure 1's own caption).
+- run_heldout_eval(): a full BO run per task (cfg.oracle_budget oracle
+  calls -- 500 for the reduced-budget 2026-09 schedule, see
+  peptide_main_bolt.yaml's comment) -- what Figure 1/2's scaling curve
+  actually reports (a "standard STBO loop proceeds unchanged" after
+  initialization, per Figure 1's own caption).
 - run_init_only_eval(): builds only the init pool per task, no BO
   acquisition at all -- what Table 11/12 actually report ("we report
   initialization only quality as a function of the first k oracle calls... k
   at the initialization stage"; k's max value equals the init-pool size
-  exactly, not the 20,000-call budget). This is far cheaper than a full BO
-  run and was previously conflated with run_heldout_eval's output, which
+  exactly, not cfg.oracle_budget). This is far cheaper than a full BO run
+  and was previously conflated with run_heldout_eval's output, which
   reproduced a different, much more expensive quantity than Table 11 by
   mistake -- see imp_plan/01_peptide_reimplementation_plan.md.
 """
