@@ -39,7 +39,7 @@
 # mi_parallel_gpus=[4..7]: this arm's own dedicated 4-GPU slice, disjoint
 # from peptide_main_bolt.yaml's [0..3] (which peptide_ablation_orpt_h0.yaml
 # takes over once that arm's own chain finishes) -- see
-# experiments/eval/run_main_bolt_vs_orpt_train.sh's header for the full
+# experiments/eval2/pipelines/run_train.sh's header for the full
 # concurrent-pipeline layout. cuda_visible_devices="4" (not null) pins the
 # per-task BO trajectory-sampling calls the same way peptide_main_bolt.yaml's
 # own comment explains (steps.py::run_bo, called outside

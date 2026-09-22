@@ -24,7 +24,7 @@
 # chains, this is a GPU-scheduling choice only, not a data dependency), so
 # this ablation's DPO-heavy workload gets its own free 4-GPU slice rather
 # than waiting for ORPT-H1's full multi-day chain to finish too. See
-# experiments/eval/run_main_bolt_vs_orpt_train.sh's header for the full
+# experiments/eval2/pipelines/run_train.sh's header for the full
 # concurrent-pipeline layout. cuda_visible_devices="0" pins the per-task BO
 # trajectory-sampling calls (see peptide_main_bolt.yaml's own comment for
 # why "0" specifically, not a round-robin across 0-3). Check nvidia-smi

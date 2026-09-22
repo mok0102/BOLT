@@ -1,0 +1,13 @@
+# Smoke target for peptide_smoke.yaml (milestones [1,2,3], 2 held-out tasks,
+# init_size 30, one GPU). Used to exercise the whole eval2 chain end to end
+# without a multi-GPU run -- see the README's verification section.
+
+default_milestones: [1, 2, 3]
+default_run_dir: runs/peptide_smoke_v1
+
+arms:
+  - name: BOLT
+    checkpoint_template: "{run_dir}/checkpoints/BOLT-{milestone}"
+
+  - name: STBO
+    milestones: [0]

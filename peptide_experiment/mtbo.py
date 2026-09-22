@@ -1,8 +1,8 @@
 """Offline shared-surrogate MTBO training (paper's DKT/FSBO-style baseline):
 one PPGPR/GPModelDKL surrogate trained across many training tasks'
-trajectories, later reused (peptide_experiment/heldout_eval.py's MTBO-<m>
-branch, via optimization/peptides/lolbo/lolbo.py's pretrained_surrogate_path
-hook) instead of a fresh per-task GP.
+trajectories, later reused (experiments/eval2/compute/fixed_target_bo.py's
+MTBO branch, via optimization/peptides/lolbo/lolbo.py's
+pretrained_surrogate_path hook) instead of a fresh per-task GP.
 
 Uses the frozen, pretrained UniRef VAE (not the per-task, randomly
 initialized/fine-tuned encoder every other arm's held-out run uses) to embed

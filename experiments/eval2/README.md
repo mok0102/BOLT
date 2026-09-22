@@ -1,119 +1,126 @@
 # experiments/eval2/
 
-Standalone, paper-ready figure/table generator for `paper/experiments.tex`.
-See `/root/.claude/plans/1-llvm-bubbly-jellyfish.md` for the full design
-rationale (fully independent of `experiments/eval/`'s clutter-prone
-`fig_*.py`/`tab_*.py`, one atomized PNG/tex per domain x panel).
+Everything evaluation, for the peptide domain: the compute engines, the
+train/eval pipeline runbooks, and the `paper/experiments.tex` figures and
+tables. Nothing about evaluation lives in `peptide_experiment/` — that
+package is training only, and the dependency runs one way (`eval2` imports
+`peptide_experiment`, never the reverse).
 
-Results go under `experiments/eval2/results/` (already covered by the
-repo's existing `experiments/*/results/` gitignore glob -- no new pattern
-needed).
+Run everything as a module from the BOLT repo root:
 
-All commands below use the **currently active experiment round**
-(init_size=100/oracle_budget=500 for peptide, init_size=100/oracle_budget=200
-for LLVM, decided 2026-09-21) and are ready to copy-paste. Run from the BOLT
-repo root.
-
-**Status as of this writing** -- several background jobs this data depends
-on are still running; commands that need them will just print
-`skipping`/`no rows` until those finish, not crash:
-- Peptide Phase 1 (`main_v2_orpt_vs_bolt__lowbudget`): raw per-task
-  trajectories exist (`main_bo` works today), but the run hasn't finished
-  and its `summary_*.csv` files aren't written yet (`fewshot`/`scaling`
-  need those -- wait for it to finish).
-- Peptide Phase 2 (ORPT-H0 low-budget eval): not started -- gated on
-  `runs/peptide_ablation_orpt_h0/checkpoints/ORPT-600` existing first.
-- LLVM eval (`llvm_main_v1__gpu{4,5,6}`): still on step 1/4, no
-  `summary_*.csv` written yet.
-- LLVM ablation (`llvm_ablation_h0_vs_h1`): never triggered
-  (`run_llvm_main_bolt_vs_orpt_mi_eval.sh`'s `RUN_ABLATION` defaults to 0).
-
----
-
-## Peptide
-
-### main_bo (fig:main-bo)
 ```bash
-python experiments/eval2/cli.py main_bo --domain peptide --milestone 600 \
-  --config peptide_experiment/configs/peptide_main_v2_eval_gpu3_lowbudget.yaml \
-  --run-dir BOLT=runs/peptide_main_bolt_v2_lowbudget \
-  --run-dir ORPT-H1=runs/peptide_main_orpt_h1_v2_lowbudget \
-  --run-dir STBO=runs/peptide_main_bolt_v2_lowbudget \
-  --run-dir MTBO=runs/peptide_main_bolt_v2_lowbudget \
-  --run-dir POGPE=runs/peptide_main_bolt_v2_lowbudget \
-  --run-dir SGPE=runs/peptide_main_bolt_v2_lowbudget \
-  --run-dir OptFormer=runs/peptide_main_bolt_v2_lowbudget \
-  --run-dir LLAMBO=runs/peptide_main_bolt_v2_lowbudget \
-  --task-set heldout100 \
-  --out-dir experiments/eval2/results/peptide
-```
-Once Phase 2 finishes, add: `--run-dir ORPT-H0=runs/peptide_ablation_orpt_h0_lowbudget`
-
-### fewshot (fig:fewshot)
-```bash
-python experiments/eval2/cli.py fewshot --domain peptide --milestone 600 \
-  --results-dir experiments/eval/results/main_v2_orpt_vs_bolt__lowbudget \
-  --out-dir experiments/eval2/results/peptide
+python -m experiments.eval2.cli <subcommand> ...
 ```
 
-### scaling (fig:scaling)
-```bash
-python experiments/eval2/cli.py scaling --domain peptide \
-  --results-dir experiments/eval/results/main_v2_orpt_vs_bolt__lowbudget \
-  --out-dir experiments/eval2/results/peptide
+## Layout
+
+```
+cli.py          single entry point, 8 subcommands
+core/           plumbing: arm specs, pool building, the CSV contract, paper constants
+domains/        peptide science (feasibility, scoring, pool format, trajectory reduction)
+compute/        the expensive steps: LLM sampling, best-of-k, real BO
+figures/        figure + table generation (pure post-hoc, no GPU)
+pipelines/      shell runbooks
+arm_specs/      which (arm, milestone) pairs each comparison covers
+results/        generated CSVs/PNGs (gitignored)
+logs/           runbook logs (gitignored)
 ```
 
-### ablation (tab:ablation)
+Imports flow one way: `cli` → `{compute, figures}` → `{domains, core}` →
+`peptide_experiment`. `core/` never imports `domains/`, and `figures/` never
+imports `compute/` — the summary CSVs are the contract between them, read
+through `core/results_io.py`. That is what keeps the figure path runnable
+with no GPU, no oracle and no checkpoints.
+
+**Adding a second domain** means adding a module to `domains/` with the same
+function surface as `peptide.py` and selecting between them in `cli.py`.
+There is deliberately no callback/dataclass indirection in place for that
+yet — `peptide.py` is the seam, and one domain does not need a framework.
+
+## Pipeline
+
+Training first, then evaluation. Each is a detachable runbook:
+
 ```bash
-python experiments/eval2/cli.py ablation --domain peptide --milestone 600 \
-  --results-dir experiments/eval/results/ablation_h0_vs_h1__lowbudget \
-  --out-dir experiments/eval2/results/peptide
-```
-Needs Phase 2 (see plan file) run first -- `ablation_h0_vs_h1__lowbudget`
-doesn't exist yet.
+# 1. BOLT + ORPT-H1 trajectory chains, then the ORPT-H0 ablation arm
+nohup bash experiments/eval2/pipelines/run_train.sh \
+    > experiments/eval2/logs/train_full.log 2>&1 &
 
----
+# 2. MTBO / OptFormer / GP-expert baselines (needs BOLT's chain complete)
+nohup bash experiments/eval2/pipelines/run_baselines_train.sh \
+    > experiments/eval2/logs/baselines_train_full.log 2>&1 &
 
-## LLVM
-
-### main_bo (fig:main-bo)
-```bash
-python experiments/eval2/cli.py main_bo --domain llvm --milestone 600 \
-  --config llvm_experiment/configs/llvm_main_eval_v1.yaml \
-  --run-dir BOLT=runs/llvm_main_bolt_v1 \
-  --run-dir ORPT-H1=runs/llvm_main_orpt_h1_v1 \
-  --run-dir STBO=runs/llvm_main_bolt_v1 \
-  --run-dir MTBO=runs/llvm_main_bolt_v1 \
-  --run-dir POGPE=runs/llvm_main_bolt_v1 \
-  --run-dir SGPE=runs/llvm_main_bolt_v1 \
-  --run-dir OptFormer=runs/llvm_main_bolt_v1 \
-  --run-dir LLAMBO=runs/llvm_main_bolt_v1 \
-  --task-set heldout \
-  --out-dir experiments/eval2/results/llvm
-```
-Note: LLVM's task-set is `heldout` (the 20-task set), not `heldout100` --
-that's the eval launcher's own default (`TASK_SET=${TASK_SET:-heldout}`).
-
-### fewshot (fig:fewshot)
-```bash
-python experiments/eval2/cli.py fewshot --domain llvm --milestone 600 \
-  --results-dir experiments/eval/results/llvm_main_v1__gpu4,experiments/eval/results/llvm_main_v1__gpu5,experiments/eval/results/llvm_main_v1__gpu6 \
-  --out-dir experiments/eval2/results/llvm
+# 3. Evaluation + figures (RUN_ABLATION=1 to also produce tab:ablation)
+nohup bash experiments/eval2/pipelines/run_eval.sh \
+    > experiments/eval2/logs/main_eval_full.log 2>&1 &
 ```
 
-### scaling (fig:scaling)
+`run_eval.sh` shards across 8 GPUs: `gpu{0..6}` take one milestone each of
+the milestone-indexed arms, `gpu7` takes the milestone-independent baselines
+(POGPE/SGPE overload the milestone field to mean `n_experts`, so they cannot
+share the real milestone axis). Sharding is expressed as `--arms` /
+`--milestones` / `--cuda-visible-devices` filters over one arm-spec file, not
+as separate manifest files.
+
+**Before launching step 3**: it is the expensive one (one real BO run per
+arm × milestone × task). Check step 2's cheap `coverage_rate_at_n_proposals`
+output first — whether the LLM arms can even reach `TARGET_POOL_SIZES`
+feasible candidates is an open empirical question. Smoke it on one slice:
+
 ```bash
-python experiments/eval2/cli.py scaling --domain llvm \
-  --results-dir experiments/eval/results/llvm_main_v1__gpu4,experiments/eval/results/llvm_main_v1__gpu5,experiments/eval/results/llvm_main_v1__gpu6 \
-  --out-dir experiments/eval2/results/llvm
+python -m experiments.eval2.cli fixed_target_bo \
+    --config peptide_experiment/configs/peptide_main_bolt.yaml \
+    --arms-file experiments/eval2/arm_specs/main.yaml \
+    --arms BOLT --milestones 10 --cuda-visible-devices 0 \
+    --task-sets heldout100 --target-pool-sizes 10 --limit-tasks 1 \
+    --out-dir experiments/eval2/results/smoke
 ```
 
-### ablation (tab:ablation)
+## Subcommands
+
+Compute (needs a GPU and the APEX oracle):
+
+| Subcommand | Produces |
+|---|---|
+| `generate_raw` | `<run_dir>/eval_raw/<task_set>/<arm>-<milestone>/*.jsonl` |
+| `incumbent` | `summary_incumbent_vs_pool_size.csv` (+ per-task) |
+| `fixed_target_bo` | `summary_fixed_target_bo.csv`, `fixed_target_bo_coverage.csv`, dense per-task BO trajectories |
+| `baselines_report` | stdout: POGPE/SGPE by `n_experts`, LLAMBO token truncation |
+
+Figures (post-hoc, no GPU — just point at results dirs):
+
+| Subcommand | Produces |
+|---|---|
+| `main_bo` | `main_bo_peptide.png` (fig:main-bo) |
+| `fewshot` | `fewshot_peptide.png` (fig:fewshot) |
+| `scaling` | `scaling_peptide_init.png`, `scaling_peptide_finalbo.png` (fig:scaling) |
+| `ablation` | `ablation_peptide.tex` + `.csv` (tab:ablation) |
+
+Example, regenerating a figure from an existing run:
+
 ```bash
-python experiments/eval2/cli.py ablation --domain llvm --milestone 600 \
-  --results-dir experiments/eval/results/llvm_ablation_h0_vs_h1 \
-  --out-dir experiments/eval2/results/llvm
+python -m experiments.eval2.cli fewshot --milestone 600 \
+    --results-dir experiments/eval2/results/main__gpu0,experiments/eval2/results/main__gpu1 \
+    --out-dir experiments/eval2/results/main/paper_figures
 ```
-Needs `RUN_ABLATION=1` passed to `run_llvm_main_bolt_vs_orpt_mi_eval.sh` (or
-the manifest run manually) first -- LLVM's H0/H1/BOLT are all already fully
-trained, this just hasn't been evaluated yet.
+
+## Arm specs
+
+`arm_specs/*.yaml` replaces the old per-GPU manifest files. One file per
+comparison; `default_milestones` is crossed with each arm, and an arm may
+override `milestones`, `run_dir` or supply a `checkpoint_template` rendered
+with `{run_dir}` and `{milestone}`. An arm with no template is a
+self-seeding baseline that builds its own init pool at BO time.
+
+| File | Comparison |
+|---|---|
+| `main.yaml` | BOLT vs ORPT-H1 vs 6 baselines, 36 (arm, milestone) pairs |
+| `ablation.yaml` | BOLT vs ORPT-H0 vs ORPT-H1 (tab:ablation) |
+| `smoke.yaml` | `peptide_smoke.yaml`-scale end-to-end check |
+
+Inspect what a file resolves to before running against it:
+
+```bash
+python -c "from experiments.eval2.core.arms import load_arms; \
+  [print(s.arm, s.milestone, s.checkpoint_dir) for s in load_arms('experiments/eval2/arm_specs/main.yaml')]"
+```

@@ -1,0 +1,50 @@
+# Main experiment: BOLT vs ORPT-H1 vs baselines, paper-fidelity scale.
+#
+# Train via experiments/eval2/pipelines/run_train.sh then
+# run_baselines_train.sh (in that order), then evaluate with run_eval.sh.
+# Verify runs/peptide_main_bolt/checkpoints/BOLT-<m> and
+# runs/peptide_main_orpt_h1/checkpoints/ORPT-<m> exist before assuming
+# training has completed.
+#
+# Arm name ORPT-H1 (not ORPT-MI) is an internal/checkpoint identifier only;
+# it displays as the paper's "ORPT" in any paper-facing figure/table -- see
+# figures/labels.py.
+#
+# Checkpoints have no /epoch_<N> subdirectory for BOLT/ORPT (torchtune==0.4.0
+# writes every epoch's shards flat into output_dir -- see
+# peptide_experiment/config.py::milestone_checkpoint_dir). OptFormer still
+# does, since optformer.py was never migrated.
+
+default_milestones: [10, 20, 50, 250, 400, 500, 600]
+default_run_dir: runs/peptide_main_bolt
+
+arms:
+  - name: BOLT
+    checkpoint_template: "{run_dir}/checkpoints/BOLT-{milestone}"
+
+  - name: ORPT-H1
+    run_dir: runs/peptide_main_orpt_h1
+    checkpoint_template: "{run_dir}/checkpoints/ORPT-{milestone}"
+
+  - name: OptFormer
+    checkpoint_template: "{run_dir}/checkpoints/OptFormer-{milestone}/epoch_0"
+
+  # Self-seeding baselines: no LLM checkpoint, they build their own init pool
+  # (see compute/fixed_target_bo.py's per-arm branches).
+  - name: MTBO
+
+  # Milestone-independent -- [0] is a placeholder, not a real milestone.
+  - name: STBO
+    milestones: [0]
+
+  - name: LLAMBO
+    milestones: [0]
+
+  # POGPE/SGPE overload the milestone field to mean n_experts (see
+  # peptide_experiment/gp_expert_transfer.py). Do NOT plot these against the
+  # real milestone axis.
+  - name: POGPE
+    milestones: [5, 10, 20]
+
+  - name: SGPE
+    milestones: [5, 10, 20]

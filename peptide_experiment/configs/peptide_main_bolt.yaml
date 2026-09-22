@@ -16,7 +16,7 @@
 # bsz32_rank16.yaml) to match peptide_main_orpt_h1.yaml's own rank.
 #
 # mi_parallel_gpus=[0..3]: this arm's own dedicated 4-GPU slice (see
-# experiments/eval/run_main_bolt_vs_orpt_train.sh's header) -- distinct from
+# experiments/eval2/pipelines/run_train.sh's header) -- distinct from
 # peptide_main_orpt_h1.yaml's [4..7], so BOLT and ORPT-H1 never contend for
 # the same physical GPU when run concurrently. Also reused for SFT itself
 # (steps.py::distributed_finetune_launch), not just one-step-BO pair

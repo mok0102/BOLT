@@ -34,27 +34,18 @@ this file is only the "how do I run it" reference.
 python -m peptide_experiment.cli trajectory_chain \
     --config peptide_experiment/configs/peptide_smoke.yaml
 
-# 2. no_bo_milestone_eval (init pool only, no BO) on every arm
-python -m peptide_experiment.cli init_only_eval \
+# 2. Evaluate it (sampling -> best-of-k -> real BO), see experiments/eval2/
+python -m experiments.eval2.cli generate_raw \
     --config peptide_experiment/configs/peptide_smoke.yaml \
-    --arm all --tasks heldout20
-
-# 3. bo_scaling_curve eval (full BO run per task) on every arm
-python -m peptide_experiment.cli heldout_eval \
-    --config peptide_experiment/configs/peptide_smoke.yaml \
-    --arm all --tasks heldout100
-
-# 4. Aggregate both into no_bo_milestone_eval.csv / bo_scaling_curve.csv
-python -m peptide_experiment.cli aggregate \
-    --config peptide_experiment/configs/peptide_smoke.yaml --tasks both
+    --arms-file experiments/eval2/arm_specs/smoke.yaml --task-sets heldout
 ```
 
-Outputs: `runs/peptide_smoke_v1/aggregate/{no_bo_milestone_eval,bo_scaling_curve}.csv`. This
-config uses a tiny milestone schedule (`[1,2,3]`) and `heldout_tasks_override` (2 tasks
-instead of the real 20/100), so it finishes in minutes — use it to confirm the pipeline
-works end to end, and to time a single BO run / one-step pair construction call, before
-touching a real config. It already has `build_orpt: true`/`mi_bo_steps: 1` set, so steps
-2-4 exercise both the BOLT and the ORPT (H0-AND-H1) checkpoints.
+This config uses a tiny milestone schedule (`[1,2,3]`) and `heldout_tasks_override`
+(2 tasks instead of the real 20/100), so it finishes in minutes — use it to confirm the
+pipeline works end to end, and to time a single BO run / one-step pair construction call,
+before touching a real config. It already has `build_orpt: true`/`mi_bo_steps: 1` set, so
+it exercises both the BOLT and the ORPT (H0-AND-H1) checkpoints. See
+`experiments/eval2/README.md` for the rest of the eval chain.
 
 ## Real experiment
 
@@ -67,28 +58,20 @@ start above) to get a grounded estimate before launching:
 
 ```bash
 # BOLT + ORPT-H1 (H0-AND-H1) trajectory chains, then the ORPT-H0 ablation arm
-bash experiments/eval/run_main_bolt_vs_orpt_train.sh
+bash experiments/eval2/pipelines/run_train.sh
+
+# Then the baselines (MTBO/OptFormer/GP experts -- needs BOLT's chain done first)
+bash experiments/eval2/pipelines/run_baselines_train.sh
 
 # Or drive one arm by hand, e.g.:
 python -m peptide_experiment.cli trajectory_chain \
     --config peptide_experiment/configs/peptide_main_bolt.yaml
 
-# no_bo_milestone_eval / Table 11 (cheap: init-pool-only, no BO)
-python -m peptide_experiment.cli init_only_eval \
-    --config peptide_experiment/configs/peptide_main_bolt.yaml \
-    --arm all --tasks heldout20
-python -m peptide_experiment.cli aggregate \
-    --config peptide_experiment/configs/peptide_main_bolt.yaml --tasks heldout20
-
-# bo_scaling_curve / Figure 1/2 (expensive: one full BO run per task per milestone)
-python -m peptide_experiment.cli heldout_eval \
-    --config peptide_experiment/configs/peptide_main_bolt.yaml \
-    --arm all --tasks heldout100
-python -m peptide_experiment.cli aggregate \
-    --config peptide_experiment/configs/peptide_main_bolt.yaml --tasks heldout100
+# Evaluation is a separate runbook -- see experiments/eval2/README.md
+bash experiments/eval2/pipelines/run_eval.sh
 ```
 
-`trajectory_chain` and both eval commands are idempotent/resumable (skip any step whose
+`trajectory_chain` and the eval runbooks are idempotent/resumable (skip any step whose
 output file already exists), so a killed/interrupted run can just be re-launched with
 the same command. Pin a GPU via the config's `cuda_visible_devices` field rather than
 `CUDA_VISIBLE_DEVICES=...` on the command line (it also has to reach in-process CUDA
@@ -96,8 +79,7 @@ calls, not just subprocesses) — check GPU availability with the other users of
 machine before picking one.
 
 Producing the actual `paper/experiments.tex` figures/tables from these runs is
-`experiments/eval2/`'s job (`experiments/eval/`'s manifests/runbooks target an older,
-slightly misaligned artifact set and are being superseded) — see its own README.
+`experiments/eval2/`'s job — see its own README.
 
 ## Configs (`configs/`)
 
@@ -176,12 +158,9 @@ runs/<experiment_id>/
   trajectories/, trajectories_csv/   # shared BO trajectory data (all train tasks)
   checkpoints/BOLT-<m>/, ORPT-<m>/   # fine-tuned LoRA checkpoints per milestone
   orpt_pairs/                        # matched_intervention preference pairs + one-step-BO work dirs, per milestone
-  heldout20/, heldout100/            # per-task held-out eval output, per arm
-  aggregate/no_bo_milestone_eval.csv # Table 11 replica
-  aggregate/bo_scaling_curve.csv     # Figure 1/2-style scaling curve
+  eval_raw/                          # raw LLM proposals per (task_set, arm, milestone)
+  eval_fixed_target_bo/              # per-task BO trajectories at a fixed init-pool size
 ```
 
-Downstream constraint-violation-rate / rejection-sampling analysis (not part of the
-paper reproduction itself) lives in `../experiments/eval/` — see its own README for that
-pipeline. (The older `../experiments/constraint_violation/` framework it superseded was
-removed — see `imp_plan/05_pool_orpt_phase1_plan.md`.)
+The `eval_*` trees are written by `../experiments/eval2/`, which owns every evaluation,
+rejection-sampling and figure/table step — see its own README.

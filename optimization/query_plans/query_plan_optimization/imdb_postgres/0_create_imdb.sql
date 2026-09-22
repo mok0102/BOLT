@@ -1,4 +1,0 @@
-CREATE DATABASE imdb;
-CREATE ROLE imdb superuser;
-ALTER ROLE imdb WITH login;
-ALTER USER imdb WITH PASSWORD 'imdb';

@@ -148,8 +148,6 @@ env.bak/
 venv.bak/
 
 # Project-local generated files
-fine-tuning/query_plans/ckpt/
-optimization/query_plans/.venv/
 fine-tuning/peptides/ckpt/
 
 # Spyder project settings
@@ -229,7 +227,9 @@ tests/
 # experiments/ holds real, reused eval/comparison source (*.py) -- track that; the
 # generated per-run CSVs/PNGs and __pycache__ under it are not source, ignore those
 experiments/*/results/
+experiments/*/logs/
 experiments/*/__pycache__/
+experiments/*/*/__pycache__/
 wandb/
 optimization/peptides/lolbo_scripts/optimization_all_collected_data/*.csv
 optimization/peptides/uniref_vae/uniref-small.csv

@@ -101,7 +101,7 @@ def predict_APEX(seq_list):
     AMP_pred = AMP_sum / float(len(apex_models))  # average the predictions
 
     # predict_APEX is called in-process (not via subprocess) by long-lived eval
-    # orchestrators (e.g. experiments/eval/fixed_target_rejection_bo.py), once
+    # orchestrators (e.g. experiments/eval2/compute/fixed_target_bo.py), once
     # or more per task over thousands of tasks. Per-call batch sizes vary
     # (bounded but not identical), so the CUDA caching allocator keeps growing
     # its reserved-but-idle pool across the whole run instead of returning

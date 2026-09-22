@@ -1,0 +1,25 @@
+# tab:ablation -- the H0-vs-H1 pair-construction ablation.
+#
+# Three rows of the paper's ablation table, one per arm (see
+# figures/labels.py::ABLATION_ARM_TO_ROW):
+#   BOLT    -> Supervised proposal
+#   ORPT-H0 -> Zero-step outcome ranking
+#   ORPT-H1 -> One-step outcome ranking
+#
+# BOLT and ORPT-H1 are the same checkpoints main.yaml evaluates; only ORPT-H0
+# is specific to this comparison. Run with run_eval.sh's RUN_ABLATION=1.
+
+default_milestones: [10, 20, 50, 250, 400, 500, 600]
+default_run_dir: runs/peptide_main_bolt
+
+arms:
+  - name: BOLT
+    checkpoint_template: "{run_dir}/checkpoints/BOLT-{milestone}"
+
+  - name: ORPT-H0
+    run_dir: runs/peptide_ablation_orpt_h0
+    checkpoint_template: "{run_dir}/checkpoints/ORPT-{milestone}"
+
+  - name: ORPT-H1
+    run_dir: runs/peptide_main_orpt_h1
+    checkpoint_template: "{run_dir}/checkpoints/ORPT-{milestone}"

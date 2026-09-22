@@ -1,20 +1,29 @@
 # BOLT-release
 
+Peptide-domain branch: this tree carries only the antimicrobial peptide design
+experiments. The LLVM / query-plan domain lives on its own branch.
+
 ## Repository Structure
 
-The repository is organized into two main directories corresponding to the different parts of BOLT:
-
 ### `fine-tuning/`
-This directory contains the necessary scripts and data to fine-tune Large Language Models (LLMs) for generating better initializations.
-- **`peptides/`**: Contains scripts for generating training data and sampling from models for peptide design.
-- **`query_plans/`**: Contains scripts for generating training data and sampling for database query plan optimization. It also includes `torchtune_config/` with YAML configurations for fine-tuning Llama 3.1 and Qwen 2.5 models.
+Scripts and data to fine-tune Large Language Models (LLMs) for generating better
+initializations.
+- **`peptides/`**: Training-data generation and sampling for peptide design, plus
+  `torchtune_config/` with the YAML configs used for SFT and DPO.
 
 ### `optimization/`
-This directory contains the core BO algorithms.
+The core BO algorithms.
 - **`peptides/`**: Implements the BO loop for peptide design.
   - **`lolbo/`**: Core logic for Latent Space BO.
   - **`apex_oracle/`**: Oracle for evaluating peptide properties.
   - **`uniref_vae/`**: VAE models for peptide sequences.
-- **`query_plans/`**: Implements the BO loop for query planning.
-  - **`query_plan_optimization/`**: Main package containing the VAE, oracle interfaces, and BO logic.
-  - **`tasks/`**: Definitions of the query plan BO tasks.
+
+### `peptide_experiment/`
+Training orchestration: the trajectory chain that interleaves BO sampling with
+SFT/DPO fine-tuning, plus the MTBO / OptFormer / GP-expert baseline trainers.
+Training only — it contains no evaluation code. See its README.
+
+### `experiments/eval2/`
+Everything evaluation: the compute engines, the train/eval pipeline runbooks, and
+the `paper/experiments.tex` figures and tables. Depends on `peptide_experiment/`,
+never the reverse. See its README.

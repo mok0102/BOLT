@@ -316,10 +316,6 @@ class ExperimentConfig:
         return self.run_dir / "milestones"
 
     @property
-    def aggregate_dir(self) -> Path:
-        return self.run_dir / "aggregate"
-
-    @property
     def orpt_pairs_dir(self) -> Path:
         return self.run_dir / "orpt_pairs"
 
@@ -410,7 +406,6 @@ class ExperimentConfig:
             self.trajectories_csv_dir,
             self.checkpoints_dir,
             self.milestones_dir,
-            self.aggregate_dir,
             self.orpt_pairs_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)

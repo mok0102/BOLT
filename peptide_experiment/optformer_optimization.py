@@ -4,8 +4,8 @@ using a fine-tuned OptFormer-<milestone> checkpoint (peptide_experiment/
 optformer.py::train_optformer) -- no GP/BoTorch surrogate or acquisition
 function at all, unlike every other arm's steps.py::run_bo(). Produces the
 same train_x,train_y-column CSV contract run_bo() does, so it slots into the
-same aggregate.py/heldout_eval.py pipeline unchanged. Standalone (not a
-steps.py flag): shares no code with the GP/BoTorch inner loop.
+same experiments/eval2/ pipeline unchanged. Standalone (not a steps.py
+flag): shares no code with the GP/BoTorch inner loop.
 """
 
 from __future__ import annotations

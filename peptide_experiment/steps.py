@@ -1,7 +1,7 @@
-"""Shared low-level steps reused by both the trajectory chain and held-out
-eval: sample+score candidates for one peptide task, and run one BO trial.
-Kept separate from trajectory_chain.py/heldout_eval.py since both need the
-exact same primitives, just pointed at different output directories.
+"""Shared low-level steps for one peptide task: sample+score candidates, and
+run one BO trial. Kept separate from trajectory_chain.py because the eval
+side (experiments/eval2/) needs the exact same primitives, just pointed at
+different output directories.
 """
 
 from __future__ import annotations
