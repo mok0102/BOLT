@@ -13,6 +13,10 @@ DEFAULT_MODEL_PATH = SCRIPT_DIR / "output" / "qwen_2_5_3B_output" / "epoch_4"
 DEFAULT_OUTPUT_FILE = SCRIPT_DIR / "sampled_output_from_ft" / "sample_output_transformers.jsonl"
 DEFAULT_REFERENCE_SEQUENCE = "RRYYEQLEQASRKGNRGFRR"
 
+# Max sequences per model.generate() call. Peak GPU memory scales with this,
+# not with the caller's requested sample count (see generate_for_reference).
+GENERATE_CHUNK_SIZE = 250
+
 SYSTEM_PROMPT = (
     "You are a specialized assistant that modifies peptide sequences to enhance "
     "antimicrobial activity. Make up to 25% sequence modifications based on known "
@@ -147,23 +151,34 @@ def generate_for_reference(
     encoded = {key: value.to(device) for key, value in encoded.items()}
     input_length = encoded["input_ids"].shape[-1]
 
-    with torch.inference_mode():
-        generated = model.generate(
-            **encoded,
-            do_sample=True,
-            temperature=temperature,
-            top_p=top_p,
-            max_new_tokens=max_new_tokens,
-            num_return_sequences=num_samples,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
-
     answers = []
-    for sequence in generated:
-        new_tokens = sequence[input_length:]
-        answer = tokenizer.decode(new_tokens, skip_special_tokens=True)
-        answers.append(clean_generation(answer))
+    # Chunked rather than one num_return_sequences=num_samples call: peak GPU
+    # memory scales with the batch, and mi_candidate_pool_size=2000 made a
+    # single call reserve ~29GB. That fit (barely) when every call ran in a
+    # fresh subprocess with a virgin allocator, but warm_sampling_pool.py's
+    # workers are reused across hundreds of tasks and the caching allocator
+    # fragments: a real OOM at milestone 400 reported 8.02GiB "reserved but
+    # unallocated" alongside 25.89GiB live. Chunking bounds the peak for BOTH
+    # the CLI and the pooled path (same total sample count either way --
+    # sampling is unseeded, so nothing else changes).
+    for start in range(0, num_samples, GENERATE_CHUNK_SIZE):
+        chunk = min(GENERATE_CHUNK_SIZE, num_samples - start)
+        with torch.inference_mode():
+            generated = model.generate(
+                **encoded,
+                do_sample=True,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                num_return_sequences=chunk,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+        for sequence in generated:
+            new_tokens = sequence[input_length:]
+            answer = tokenizer.decode(new_tokens, skip_special_tokens=True)
+            answers.append(clean_generation(answer))
+        del generated
     return answers
 
 

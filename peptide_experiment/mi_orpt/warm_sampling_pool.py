@@ -66,10 +66,28 @@ _TOKENIZER = None
 _DEVICE = None
 _MODEL_PATH = None
 
+# Recycle each worker after this many jobs. The point of this module is to pay
+# the ~31s checkpoint load once instead of once per task, but "once, forever"
+# turned out to be too far: a worker reused across hundreds of 2000-sequence
+# generates fragmented the caching allocator until a routine job OOMed with
+# 8GiB "reserved but unallocated" (milestone 400, pipeline ORPT-H1). Recycling
+# restores the fresh-allocator property that subprocess-per-call had for free,
+# while still amortizing the load across this many tasks -- i.e. ~97% of the
+# saving for a bounded worst case. Paired with generate_for_reference()'s
+# chunking, which bounds the peak a single job can demand in the first place.
+MAX_TASKS_PER_CHILD = 32
 
-def _init_sampling_worker(gpu_queue, fine_tuning_dir: Path, model_path: Path) -> None:
-    gpu = gpu_queue.get()
+
+def _init_sampling_worker(gpu: str, fine_tuning_dir: Path, model_path: Path) -> None:
+    # The GPU arrives directly rather than via an mp.Queue (warm_pool.py's
+    # idiom): each pool here owns exactly one GPU and one worker, so there is
+    # nothing to hand out, and a queue would deadlock the replacement worker
+    # that MAX_TASKS_PER_CHILD spawns -- it would find the queue already empty.
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu
+    # Long-lived workers fragment the caching allocator in a way that
+    # subprocess-per-call never did; expandable segments is PyTorch's own
+    # remedy and must be set before torch is first imported in this process.
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     sys.path.insert(0, str(fine_tuning_dir))
 
@@ -188,13 +206,12 @@ def create_sampling_pools(gpus: list[str], fine_tuning_dir: Path, model_path: Pa
     ctx = multiprocessing.get_context("spawn")
     pools: dict[str, SamplingPool] = {}
     for gpu in gpus:
-        gpu_queue = ctx.Queue()
-        gpu_queue.put(gpu)
         executor = ProcessPoolExecutor(
             max_workers=1,
             mp_context=ctx,
             initializer=_init_sampling_worker,
-            initargs=(gpu_queue, fine_tuning_dir, model_path),
+            initargs=(gpu, fine_tuning_dir, model_path),
+            max_tasks_per_child=MAX_TASKS_PER_CHILD,
         )
         pools[gpu] = SamplingPool(executor, gpu, model_path)
     print(f"[warm sampling pool] {len(pools)} worker(s) on GPU(s) {','.join(gpus)} holding {model_path}")
