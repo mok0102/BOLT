@@ -159,6 +159,7 @@ def run_llambo_bo(
     work_dir: Path,
     run_id: str,
     checkpoint_path: Path | None = None,
+    model_provider=None,
 ) -> Path:
     """Self-seeds via steps.build_mutation_init() (same as OptFormer -- LLAMBO
     has no task-specific proposer of its own either), then runs LLAMBO's
@@ -171,6 +172,14 @@ def run_llambo_bo(
     failure -- experiments/eval2/domains/peptide.py::best_objective_at_k()'s
     existing row_idx = min(pool_size+k, len(df)) clamp already tolerates a
     shorter-than-expected CSV gracefully.
+
+    model_provider: None (default) loads checkpoint_path fresh right here,
+    same as ever. A zero-arg callable returning (model, tokenizer) (e.g. a
+    memoizing closure built by the caller, which loops this over many tasks
+    against the same never-fine-tuned base checkpoint): called only once we
+    know this task actually needs computing (after the dest_csv skip check
+    below), so a fully-resumed run pays zero load cost -- see
+    experiments/eval2/compute/fixed_target_bo.py's LLAMBO branch.
     """
     from apex_oracle import apex_wrapper
 
@@ -186,10 +195,13 @@ def run_llambo_bo(
     scores = [float(line) for line in scores_path.read_text().splitlines() if line.strip()]
     history: list[tuple[str, float]] = list(zip(seqs, scores))
 
-    checkpoint_path = checkpoint_path or cfg.base_checkpoint_dir
     device = resolve_device("auto")
-    dtype = resolve_dtype("auto", device)
-    model, tokenizer = _load_model_and_tokenizer(checkpoint_path, device, dtype)
+    if model_provider is not None:
+        model, tokenizer = model_provider()
+    else:
+        checkpoint_path = checkpoint_path or cfg.base_checkpoint_dir
+        dtype = resolve_dtype("auto", device)
+        model, tokenizer = _load_model_and_tokenizer(checkpoint_path, device, dtype)
 
     n_extra_calls = 0
     total_input_tokens = 0

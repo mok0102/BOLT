@@ -43,7 +43,7 @@ CLI="python -m experiments.eval2.cli"
 ARMS_FILE=${ARMS_FILE:-experiments/eval2/arm_specs/main.yaml}
 CONFIG=${CONFIG:-peptide_experiment/configs/peptide_main_bolt.yaml}
 RUN_TAG=${RUN_TAG:-main}
-TASK_SET=${TASK_SET:-heldout100}
+TASK_SET=${TASK_SET:-heldout50}
 
 # Arms that carry the real milestone axis, sharded one milestone per GPU.
 MILESTONE_ARMS=${MILESTONE_ARMS:-BOLT,ORPT-H1,OptFormer,MTBO}
@@ -167,12 +167,12 @@ $CLI main_bo \
     > "${LOGS}/${RUN_TAG}_step4_main_bo.log" 2>&1
 
 $CLI fewshot \
-    --milestone "$FINAL_MILESTONE" --results-dir "$RESULTS_SHARDS" \
+    --milestone "$FINAL_MILESTONE" --results-dir "$RESULTS_SHARDS_ALL" \
     --task-set "$TASK_SET" --out-dir "$FIGURES" \
     > "${LOGS}/${RUN_TAG}_step4_fewshot.log" 2>&1
 
 $CLI scaling \
-    --results-dir "$RESULTS_SHARDS" --task-set "$TASK_SET" --out-dir "$FIGURES" \
+    --results-dir "$RESULTS_SHARDS_ALL" --task-set "$TASK_SET" --out-dir "$FIGURES" \
     > "${LOGS}/${RUN_TAG}_step4_scaling.log" 2>&1
 
 if [ "$RUN_ABLATION" = "1" ]; then

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import os
 from pathlib import Path
 
 from .compute import fixed_target_bo, generate_raw, incumbent, reports
@@ -67,6 +68,16 @@ def _load(args):
     cfg = peptide.load_config(args.config)
     if args.cuda_visible_devices is not None:
         cfg = dataclasses.replace(cfg, cuda_visible_devices=str(args.cuda_visible_devices))
+        # load_config() only sets this env var from the config *file's* own
+        # cuda_visible_devices (normally unset); this shard's actual GPU
+        # arrives one line later via --cuda-visible-devices, so it must be
+        # applied here too -- otherwise every in-process torch call this CLI
+        # process makes directly (OptFormer/LLAMBO's model load, unlike every
+        # other arm's subprocess-launched real BO) silently falls back to
+        # physical GPU 0 regardless of which shard it is, which is exactly
+        # the mass OOM seen when 4-5 shards' OptFormer/LLAMBO all pile onto
+        # GPU 0 at once. Must happen before any CUDA call in this process.
+        os.environ["CUDA_VISIBLE_DEVICES"] = cfg.cuda_visible_devices
     specs = load_arms(args.arms_file, arms=_csv_list(args.arms), milestones=_int_list(args.milestones))
     return cfg, specs, _csv_list(args.task_sets) or ["heldout"]
 

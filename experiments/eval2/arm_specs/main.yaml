@@ -10,10 +10,11 @@
 # it displays as the paper's "ORPT" in any paper-facing figure/table -- see
 # figures/labels.py.
 #
-# Checkpoints have no /epoch_<N> subdirectory for BOLT/ORPT (torchtune==0.4.0
-# writes every epoch's shards flat into output_dir -- see
-# peptide_experiment/config.py::milestone_checkpoint_dir). OptFormer still
-# does, since optformer.py was never migrated.
+# Checkpoints have no /epoch_<N> subdirectory for BOLT/ORPT/OptFormer
+# (torchtune==0.4.0 writes every epoch's shards flat into output_dir -- see
+# peptide_experiment/config.py::milestone_checkpoint_dir). Confirmed against
+# real completed OptFormer-<m> checkpoints under runs/peptide_main_bolt/
+# checkpoints/ -- flat, no epoch_<N> anywhere.
 
 default_milestones: [10, 20, 50, 250, 400, 500, 600]
 default_run_dir: runs/peptide_main_bolt
@@ -27,7 +28,7 @@ arms:
     checkpoint_template: "{run_dir}/checkpoints/ORPT-{milestone}"
 
   - name: OptFormer
-    checkpoint_template: "{run_dir}/checkpoints/OptFormer-{milestone}/epoch_0"
+    checkpoint_template: "{run_dir}/checkpoints/OptFormer-{milestone}"
 
   # Self-seeding baselines: no LLM checkpoint, they build their own init pool
   # (see compute/fixed_target_bo.py's per-arm branches).
@@ -44,7 +45,7 @@ arms:
   # peptide_experiment/gp_expert_transfer.py). Do NOT plot these against the
   # real milestone axis.
   - name: POGPE
-    milestones: [5, 10, 20]
+    milestones: [10, 20, 50, 250, 400, 500, 600]
 
   - name: SGPE
-    milestones: [5, 10, 20]
+    milestones: [10, 20, 50, 250, 400, 500, 600]

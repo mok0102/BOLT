@@ -29,10 +29,10 @@ class TurboState:
         * torch.inf
     )
 
-    # def __post_init__(self):
-    #     self.failure_tolerance = math.ceil(
-    #         max([4.0 / self.batch_size, float(self.dim ) / self.batch_size])
-    #     )
+    def __post_init__(self):
+        self.failure_tolerance = math.ceil(
+            max([4.0 / self.batch_size, float(self.dim) / self.batch_size])
+        )
 
 
 def update_tr_length(state):
@@ -163,6 +163,11 @@ def generate_batch(
     device=torch.device("cuda"),
     absolute_bounds=None,
     constraint_model_list=None,
+    C=None,  # Constraint values for X/Y, parallel rows -- used to pick a
+             # feasibility-aware trust-region center (mirrors
+             # update_state_constrained's own success/failure rule) instead
+             # of the raw-score argmax, which can land on a
+             # constraint-violating point and re-center the search there.
 ):
     assert acqf in ("ts", "ei")
     if constraint_model_list is not None:
@@ -174,7 +179,19 @@ def generate_batch(
     if n_candidates is None:
         n_candidates = min(5000, max(2000, 200 * X.shape[-1]))
 
-    x_center = X[Y.argmax(), :].clone()
+    if C is not None:
+        # Same rule as initialize_tr_state/update_state_constrained: center
+        # on the best point that satisfies every constraint; if none does
+        # yet, center on the point with the smallest total violation.
+        valid_mask = torch.all(C <= 0, dim=-1)
+        if valid_mask.any():
+            valid_indices = valid_mask.nonzero(as_tuple=True)[0]
+            center_idx = valid_indices[Y[valid_mask].argmax()]
+        else:
+            center_idx = C.sum(dim=-1).argmin()
+        x_center = X[center_idx, :].clone()
+    else:
+        x_center = X[Y.argmax(), :].clone()
     weights = torch.ones_like(x_center)
 
     if absolute_bounds is None:

@@ -9,11 +9,20 @@
 # U_0(C,S) equation.
 #
 # Same milestones, oracle_budget, init_size, and (critically)
-# mi_num_backgrounds/mi_target_pairs_per_task/mi_max_candidates_per_task/
-# mi_max_tasks_per_milestone as peptide_main_orpt_h1.yaml -- must match
-# exactly, otherwise Zero-step vs. One-step wouldn't be a controlled
-# comparison (differing pair-construction budgets would confound the
-# ablation's own signal). No heldout_tasks_override: uses the real heldout
+# mi_num_backgrounds/mi_background_size/mi_target_pairs_per_task/
+# mi_max_candidates_per_task/mi_max_tasks_per_milestone as
+# peptide_main_orpt_h1.yaml -- must match exactly, otherwise Zero-step vs.
+# One-step wouldn't be a controlled comparison (differing pair-construction
+# budgets would confound the ablation's own signal). mi_num_backgrounds=8/
+# mi_background_size=20/mi_max_candidates_per_task=24 (2026-09, up from
+# 4/unset/16) mirror peptide_main_orpt_h1.yaml's own diagnostic-session fix
+# for real milestone-600 pair-yield collapse -- see that config's comment
+# for the full root-cause writeup; it applies here too since the shared
+# base-set/bank-size-gate code path doesn't branch on mi_bo_steps.
+# mi_max_tasks_per_milestone is also removed here (2026-09-23), same as
+# peptide_main_orpt_h1.yaml -- every task in [0, milestone) is now used for
+# pair construction at every milestone, not a fixed 50-task subsample. No
+# heldout_tasks_override: uses the real heldout
 # task set, same as the main experiment, so this arm's eval work is directly
 # comparable to -- and BOLT/ORPT-H1's rows are directly reused from -- the
 # main experiment's own eval run.
@@ -46,13 +55,13 @@ orpt_beta: 0.25
 orpt_lr: 2.0e-5
 orpt_torchtune_config: main_qwen_2_5_3B_lora_dpo_bsz32_rank16.yaml
 orpt_pair_source: matched_intervention
-mi_num_backgrounds: 4
+mi_num_backgrounds: 8
+mi_background_size: 20
 mi_tau_q: 1.0
 mi_z_min: 1.0
 mi_delta_t: 0.0
 mi_target_pairs_per_task: 30
-mi_max_candidates_per_task: 16
-mi_max_tasks_per_milestone: 50
+mi_max_candidates_per_task: 24
 mi_bo_steps: 0
 # mi_candidate_temperature/mi_candidate_pool_size: must match
 # peptide_main_orpt_h1.yaml exactly -- see that config's identical comment

@@ -15,7 +15,7 @@ import yaml
 
 BOLT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BOLT_ROOT / "optimization" / "peptides"))
-from apex_oracle.task_splits import HELDOUT20_TASKS, HELDOUT100_TASKS  # noqa: E402
+from apex_oracle.task_splits import HELDOUT20_TASKS, HELDOUT50_TASKS, HELDOUT100_TASKS  # noqa: E402
 
 
 @dataclass
@@ -109,12 +109,28 @@ class ExperimentConfig:
     # "matched_intervention" switches it to peptide_experiment/mi_orpt/
     # build_pairs.py instead -- a different pair *labeling mechanism*, kept
     # separate from orpt_pairing_mode (which stays its own, narrower
-    # "feasible_only"-only knob). Pool size m deliberately reuses init_size
-    # rather than adding a new field; pair count is its own mi_* fields
-    # below (unlike m, K's semantics genuinely differ between pairing
-    # modes -- see mi_target_pairs_per_task's docstring).
+    # "feasible_only"-only knob). Pool size m used to just reuse init_size
+    # (no separate field) since m's *semantics* don't differ between
+    # pairing modes -- unlike K, which does (see mi_target_pairs_per_task's
+    # docstring). That reasoning never actually required m to equal the
+    # deployment pool size (init_size); a 2026-09 diagnostic session (real
+    # milestone-600 run, main-orpt-peptide branch) found the shared candidate
+    # x is diluted 1/init_size inside U_1=max(background+candidate+BO batch)
+    # when init_size=100, making most matched comparisons noise-dominated
+    # (~41% sign-conflicting, ~9% all-zero diffs, out of 6000 real
+    # comparisons). See mi_background_size below, which decouples this.
     orpt_pair_source: str = "objective_ranked"
     mi_num_backgrounds: int = 8  # M, shared backgrounds sampled once per task and reused across every candidate evaluated for it
+    # None (default): pair-construction's shared base set size m reuses
+    # init_size (pre-2026-09 behavior, unchanged for objective_ranked and
+    # any matched_intervention config that doesn't set this). An int:
+    # overrides m for matched_intervention's shared base sets only (orpt.py
+    # passes this, not init_size, as build_pairs.py's --m), independent of
+    # the deployment BO's own init_size -- trades away train/test pool-size
+    # parity to reduce how much a single candidate's marginal contribution
+    # is diluted inside U_1's max(...) (see mi_num_backgrounds's own m-1
+    # background draw in mi_orpt/pair_construction.py).
+    mi_background_size: int | None = None
     mi_tau_q: float = 1.0  # reference-aligned distribution q_t's softmax temperature
     mi_z_min: float = 1.96  # SNR reliability threshold a pair's Delta_1 must clear
     mi_delta_t: float = 0.0  # min |Delta_1| (numerical tolerance only, not a tunable effect-size floor)
@@ -196,9 +212,10 @@ class ExperimentConfig:
     # sampling pass (steps.py::sample_and_build_init's own init_size override,
     # via dataclasses.replace -- same idiom mi_orpt/one_step_evaluator.py
     # already uses for a scoped init_size override). None (default): computed
-    # as 2x min_bank_size_needed(init_size, mi_max_candidates_per_task) --
-    # deliberately NOT just init_size itself, since that's mathematically
-    # guaranteed to fall short of min_bank_size_needed=init_size-1+
+    # as 2x min_bank_size_needed(mi_background_size or init_size,
+    # mi_max_candidates_per_task) -- deliberately NOT just init_size itself,
+    # since that's mathematically guaranteed to fall short of
+    # min_bank_size_needed=init_size-1+
     # mi_max_candidates_per_task even before any candidates are filtered out
     # for infeasibility (real observed feasible-fraction-of-unique-draws at
     # temp=1.5/milestone 5: ~57-78%, hence the 2x margin rather than 1x).
@@ -282,6 +299,7 @@ class ExperimentConfig:
 
     bolt_root: Path = BOLT_ROOT
     heldout20_tasks: list[int] = field(default_factory=lambda: list(HELDOUT20_TASKS))
+    heldout50_tasks: list[int] = field(default_factory=lambda: list(HELDOUT50_TASKS))
     heldout100_tasks: list[int] = field(default_factory=lambda: list(HELDOUT100_TASKS))
 
     def __post_init__(self) -> None:
@@ -291,6 +309,7 @@ class ExperimentConfig:
         self.milestones = sorted(self.milestones)
         if self.heldout_tasks_override is not None:
             self.heldout20_tasks = list(self.heldout_tasks_override)
+            self.heldout50_tasks = list(self.heldout_tasks_override)
             self.heldout100_tasks = list(self.heldout_tasks_override)
 
     # -- derived paths --------------------------------------------------
@@ -332,12 +351,16 @@ class ExperimentConfig:
         return self.run_dir / "tensorboard"
 
     def heldout_dir(self, task_set: str) -> Path:
-        assert task_set in ("heldout20", "heldout100")
+        assert task_set in ("heldout20", "heldout50", "heldout100")
         return self.run_dir / task_set
 
     def heldout_tasks(self, task_set: str) -> list[int]:
-        assert task_set in ("heldout20", "heldout100")
-        return self.heldout20_tasks if task_set == "heldout20" else self.heldout100_tasks
+        assert task_set in ("heldout20", "heldout50", "heldout100")
+        if task_set == "heldout20":
+            return self.heldout20_tasks
+        if task_set == "heldout50":
+            return self.heldout50_tasks
+        return self.heldout100_tasks
 
     def train_task_range(self) -> range:
         n = self.max_train_tasks if self.max_train_tasks is not None else max(self.milestones)
@@ -376,15 +399,12 @@ class ExperimentConfig:
         optformer.py::train_optformer), retrained at each milestone on only
         that milestone's completed trajectories.
 
-        Still has the /epoch_<N> subdirectory milestone_checkpoint_dir()/
-        orpt_checkpoint_dir() dropped above -- optformer.py's own
-        train_optformer() wasn't touched this session (out of scope: OptFormer
-        is a baseline, not part of the H0/H1 pair-construction or budget
-        work), so it likely has the identical torchtune==0.4.0
-        checkpoint-format mismatch materialize_hf_checkpoint's docstring
-        describes, just not yet hit/fixed here.
+        No /epoch_<N> subdirectory -- same reasoning as
+        milestone_checkpoint_dir()/orpt_checkpoint_dir() above. Confirmed
+        against real completed OptFormer-<m> checkpoints under
+        runs/peptide_main_bolt/checkpoints/ -- flat, no epoch_<N> anywhere.
         """
-        return self.checkpoints_dir / f"OptFormer-{milestone}" / f"epoch_{self.optformer_epochs - 1}"
+        return self.checkpoints_dir / f"OptFormer-{milestone}"
 
     def gp_expert_dir(self, n_experts: int) -> Path:
         """Root directory for POGPE-<n_experts>/SGPE-<n_experts>'s shared

@@ -191,7 +191,7 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
             # replacement) while the bank dedups by sequence, so exactly-10x
             # can still land under the bar once duplicates collapse.
             pool_size = cfg.mi_candidate_pool_size or (
-                min_bank_size_needed(cfg.init_size, cfg.mi_max_candidates_per_task) * 15
+                min_bank_size_needed(cfg.mi_background_size or cfg.init_size, cfg.mi_max_candidates_per_task) * 15
             )
             pool_cfg = dataclasses.replace(cfg, init_size=pool_size)
             results = _sample_candidate_pool_parallel(
@@ -221,7 +221,7 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int):
             "--similarity-threshold",
             cfg.similarity_threshold,
             "--m",
-            cfg.init_size,
+            cfg.mi_background_size or cfg.init_size,
             "--target-pairs-per-task",
             cfg.mi_target_pairs_per_task,
             "--max-candidates-per-task",

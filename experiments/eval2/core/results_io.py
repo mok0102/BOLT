@@ -14,6 +14,7 @@ import pandas as pd
 
 SUMMARY_FIXED_TARGET_BO = "summary_fixed_target_bo.csv"
 SUMMARY_INCUMBENT = "summary_incumbent_vs_pool_size.csv"
+PER_TASK_FIXED_TARGET_BO = "per_task_fixed_target_bo.csv"
 
 
 def _concat_csv(results_dirs: str | Path | list[str | Path], filename: str) -> pd.DataFrame:
@@ -40,3 +41,7 @@ def load_summary_fixed_target_bo(results_dirs: str | Path | list[str | Path]) ->
 
 def load_summary_incumbent(results_dirs: str | Path | list[str | Path]) -> pd.DataFrame:
     return _concat_csv(results_dirs, SUMMARY_INCUMBENT)
+
+
+def load_per_task_fixed_target_bo(results_dirs: str | Path | list[str | Path]) -> pd.DataFrame:
+    return _concat_csv(results_dirs, PER_TASK_FIXED_TARGET_BO)

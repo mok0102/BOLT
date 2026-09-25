@@ -8,4 +8,5 @@ held-out block (see imp_plan/01_peptide_reimplementation_plan.md).
 
 TRAIN_TASKS = range(0, 900)
 HELDOUT20_TASKS = range(900, 920)
+HELDOUT50_TASKS = range(900, 950)
 HELDOUT100_TASKS = range(900, 1000)

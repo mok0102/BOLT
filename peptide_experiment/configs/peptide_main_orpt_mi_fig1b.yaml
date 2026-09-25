@@ -1,0 +1,18 @@
+# fig:main-bo (paper-style, Figure 1b reproduction with ORPT added) -- see
+# peptide_main_bolt_fig1b.yaml's comment. Points at the existing
+# runs/lorarank_8/peptide_main_orpt_mi run_dir (arm name ORPT-MI in
+# eval_fixed_target_bo output, matching the directories already on disk --
+# do not rename to ORPT-H1 here, that would make fixed_target_bo.py look in
+# a fresh empty directory instead of resuming the partial coverage already
+# there). No orpt.py/mi_orpt training fields needed -- this config is only
+# used for fixed_target_bo.py's eval-time real BO, never pair construction.
+experiment_id: lorarank_8_orpt_mi_fig1b
+milestones: [126, 252, 378, 504, 630, 756, 900]
+oracle_budget: 20000
+init_size: 1000
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+build_orpt: true
+torchtune_config: main_qwen_2_5_3B_lora_bsz32_rank16.yaml
+table_k_checkpoints: [20, 50, 100, 200, 500]

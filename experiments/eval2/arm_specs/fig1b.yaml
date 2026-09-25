@@ -1,0 +1,43 @@
+# fig:main-bo (paper-style Figure 1b reproduction, ORPT added, LLAMBO
+# excluded -- see /root/.claude/plans/llvm-breezy-jellyfish.md). Points at
+# the existing paper-scale run under runs/lorarank_8 (init_size=1000/
+# oracle_budget=20000), NOT the current main run's reduced-budget
+# checkpoints. milestones here really are milestones (unlike POGPE/SGPE
+# below, which overload the field to mean n_experts).
+
+default_milestones: [126, 252, 378, 504, 630, 756, 900]
+default_run_dir: runs/lorarank_8/peptide_main_bolt
+
+arms:
+  - name: BOLT
+    checkpoint_template: "{run_dir}/checkpoints/BOLT-{milestone}"
+
+  - name: ORPT-MI
+    run_dir: runs/lorarank_8/peptide_main_orpt_mi
+    checkpoint_template: "{run_dir}/checkpoints/ORPT-{milestone}"
+
+  # Unlike the current main run's flat OptFormer checkpoints, lorarank_8's
+  # are torchtune-nested (OptFormer-<m>/epoch_0/... has the actual
+  # tokenizer/model files) -- confirmed by direct inspection, both 504
+  # (already-succeeded milestone) and 900 (untested) have the identical
+  # epoch_0/ layout.
+  - name: OptFormer
+    checkpoint_template: "{run_dir}/checkpoints/OptFormer-{milestone}/epoch_0"
+
+  # Self-seeding: no LLM checkpoint, they build their own init pool (see
+  # compute/fixed_target_bo.py's per-arm branches).
+  - name: MTBO
+
+  - name: STBO
+    milestones: [0]
+
+  # POGPE/SGPE overload the milestone field to mean n_experts (see
+  # peptide_experiment/gp_expert_transfer.py). Do NOT plot these against the
+  # real milestone axis. GPExperts-5/10/20 already exist correctly under
+  # runs/lorarank_8/peptide_main_bolt/checkpoints/ (unlike the current main
+  # run, no path-convention fix needed here).
+  - name: POGPE
+    milestones: [5, 10, 20]
+
+  - name: SGPE
+    milestones: [5, 10, 20]

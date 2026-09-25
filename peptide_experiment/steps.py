@@ -7,6 +7,7 @@ different output directories.
 from __future__ import annotations
 
 import dataclasses
+import fcntl
 import json
 import os
 import random
@@ -89,9 +90,45 @@ def materialize_hf_checkpoint(ckpt_dir: Path, epoch: int, base_checkpoint_dir: P
     Idempotent: returns immediately once model.safetensors.index.json
     already exists in ckpt_dir. Shared by both the SFT
     (trajectory_chain.py) and ORPT (orpt.py) training steps.
+
+    Our environment (previously an A100 box, now pinned to a different
+    torchtune version than the 0.4.0 above) runs torchtune>=0.6, whose
+    FullModelHFCheckpointer already writes a full HF-standard checkpoint
+    (safetensors shards + model.safetensors.index.json + tokenizer files)
+    unprompted -- just nested under ckpt_dir/epoch_<epoch>/ instead of
+    directly in ckpt_dir. In that case there's nothing to convert; just
+    flatten epoch_<epoch>/ up into ckpt_dir.
     """
     index_path = ckpt_dir / "model.safetensors.index.json"
     if index_path.exists():
+        return ckpt_dir
+
+    epoch_dir = ckpt_dir / f"epoch_{epoch}"
+    if (epoch_dir / "model.safetensors.index.json").exists():
+        # list(...) up front: shutil.move below removes each item from
+        # epoch_dir as it goes, and mutating a directory while iterating
+        # os.scandir over it (what Path.iterdir() uses) is unspecified.
+        #
+        # A checkpointer using ckpt_dir as its OWN checkpointer.checkpoint_dir
+        # (e.g. ORPT-<m>'s DPO stage loading pi_ref from BOLT-<m>) copies
+        # "every file in ckpt_dir" into its own new epoch_<e>/ output as a
+        # side effect of loading it (torchtune's own save_checkpoint) -- if
+        # ckpt_dir's SOURCE still had stray epoch_<n>/recipe_state/ clutter
+        # (cleanup_intermediate_epochs should prevent this, but don't rely
+        # on ordering across two different training stages), those get
+        # copied in here too, nested one level deeper, and a copied-in item
+        # literally named the same as this very epoch_dir (e.g. "epoch_0"
+        # inside epoch_dir itself) makes shutil.move's "move into an
+        # existing directory" fallback collide with epoch_dir's own name.
+        # Discard such clutter outright instead of moving it -- it was never
+        # part of the real HF checkpoint bundle.
+        for item in list(epoch_dir.iterdir()):
+            is_stray_epoch_dir = item.is_dir() and item.name.startswith("epoch_") and item.name[len("epoch_") :].isdigit()
+            if item.is_dir() and (item.name == "recipe_state" or is_stray_epoch_dir):
+                shutil.rmtree(item)
+                continue
+            shutil.move(str(item), str(ckpt_dir / item.name))
+        epoch_dir.rmdir()
         return ckpt_dir
 
     import torch
@@ -152,6 +189,25 @@ def cleanup_intermediate_epochs(ckpt_dir: Path, final_epoch: int) -> None:
     intermediate-checkpoint-only recipe_state.pt (irrelevant once training
     has finished). Shared by both the SFT (trajectory_chain.py) and ORPT
     (orpt.py) training steps.
+
+    torchtune>=0.6 path (2026-09 diagnostic session, real milestone-600 run):
+    the glob patterns above only ever match torchtune==0.4.0's flat layout
+    and silently find nothing under torchtune>=0.6, which instead nests each
+    epoch's full HF-format checkpoint under ckpt_dir/epoch_<e>/ (see
+    materialize_hf_checkpoint's own torchtune>=0.6 branch, which flattens
+    only epoch_<final_epoch>/ up to ckpt_dir and leaves the other epoch_<e>/
+    dirs + epoch_<final_epoch>/'s own recipe_state/ untouched). Left alone,
+    those stray directories are more than wasted disk: a downstream
+    checkpointer using ckpt_dir as its OWN checkpointer.checkpoint_dir (e.g.
+    ORPT-<m>'s DPO stage loading pi_ref from BOLT-<m>) copies "everything in
+    ckpt_dir" into its own new epoch_<e>/ output as a side effect of loading
+    it, silently duplicating this same clutter one level deeper -- and if a
+    copied-in item happens to collide with that new epoch_<e>/ directory's
+    own name, materialize_hf_checkpoint's flatten can hit a real
+    shutil.Error (observed on a live milestone-10 ORPT run). Delete every
+    epoch_<n> subdirectory (n != final_epoch, or n == final_epoch once
+    materialized) and any recipe_state/ directory the same way the
+    torchtune==0.4.0 branch above deletes its own flat-file equivalents.
     """
     materialized = (ckpt_dir / "model.safetensors.index.json").exists()
     for pattern in ("hf_model_*_*.pt", "adapter_*.pt"):
@@ -165,6 +221,18 @@ def cleanup_intermediate_epochs(ckpt_dir: Path, final_epoch: int) -> None:
     recipe_state = ckpt_dir / "recipe_state.pt"
     if recipe_state.exists():
         recipe_state.unlink()
+    for d in ckpt_dir.glob("epoch_*"):
+        if not d.is_dir():
+            continue
+        suffix = d.name[len("epoch_") :]
+        if not suffix.isdigit():
+            continue
+        epoch = int(suffix)
+        if epoch != final_epoch or materialized:
+            shutil.rmtree(d)
+    recipe_state_dir = ckpt_dir / "recipe_state"
+    if recipe_state_dir.is_dir():
+        shutil.rmtree(recipe_state_dir)
 
 
 def distributed_finetune_launch(
@@ -330,21 +398,39 @@ def build_mutation_init(
     work_dir.mkdir(parents=True, exist_ok=True)
     init_path = work_dir / f"task_{task_idx:04d}_init.txt"
     scores_path = work_dir / f"task_{task_idx:04d}_scores.csv"
-    if init_path.exists() and scores_path.exists():
-        print(f"[task {task_idx}] init data already exists at {init_path}, skipping")
-        return init_path, scores_path
+    lock_path = work_dir / f"task_{task_idx:04d}.lock"
 
-    reference_seq = REFERENCE_SEQUENCE[task_idx]
-    mutations = generate_unique_mutations(
-        [reference_seq],
-        num_mutations=cfg.init_size,
-        max_mutation_distance=1.0 - cfg.similarity_threshold,
-    )[0]
-    scores = list(-apex_wrapper(mutations)[:, 0])
+    # generate_unique_mutations is unseeded, so when this is the SHARED
+    # canonical pool (fixed_target_bo.py's SHARED_INIT_ARMS -- several GPU
+    # worker processes all calling this for the exact same (work_dir,
+    # task_idx) at sweep startup) the old exists-check-then-write here was a
+    # real race: multiple processes could all see "not there yet" before
+    # any of them finished writing, each generate their OWN different
+    # mutations, and each copy their own version out -- confirmed in
+    # practice (three arms silently ended up on three different pools from
+    # one concurrent launch). The flock makes the whole check+generate+write
+    # one atomic section per task_idx, so exactly one process ever
+    # generates and every other one correctly waits and then reuses it.
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            if init_path.exists() and scores_path.exists():
+                print(f"[task {task_idx}] init data already exists at {init_path}, skipping")
+                return init_path, scores_path
 
-    init_path.write_text("\n".join(mutations) + "\n")
-    scores_path.write_text("\n".join(f"{s:.8f}" for s in scores) + "\n")
-    _pad_to_size(init_path, scores_path, cfg.init_size)
+            reference_seq = REFERENCE_SEQUENCE[task_idx]
+            mutations = generate_unique_mutations(
+                [reference_seq],
+                num_mutations=cfg.init_size,
+                max_mutation_distance=1.0 - cfg.similarity_threshold,
+            )[0]
+            scores = list(-apex_wrapper(mutations)[:, 0])
+
+            init_path.write_text("\n".join(mutations) + "\n")
+            scores_path.write_text("\n".join(f"{s:.8f}" for s in scores) + "\n")
+            _pad_to_size(init_path, scores_path, cfg.init_size)
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
     return init_path, scores_path
 
 
@@ -577,7 +663,11 @@ def run_bo(
         "--wandb_run_name",
         run_name,
     ]
-    if not stbo:
+    if init_path is not None:
+        # Previously gated on `not stbo` -- STBO's own load_train_data() now
+        # accepts an injected pool too (fixed_target_bo.py's
+        # SHARED_INIT_ARMS), so this only needs to check whether the caller
+        # actually has one to inject, same as every other arm.
         cmd += [
             "--init_data_path",
             init_path,

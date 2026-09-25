@@ -38,7 +38,7 @@ for _p in (BOLT_ROOT, BOLT_ROOT / "fine-tuning" / "peptides" / "sampled_output_f
 
 NAME = "peptide"
 OBJECTIVE_LABEL = "MIC (lower = more potent)"
-TASK_SETS = ("trainset", "heldout", "heldout100")
+TASK_SETS = ("trainset", "heldout", "heldout50", "heldout100")
 
 
 def load_config(path: str):
@@ -49,12 +49,14 @@ def load_config(path: str):
 
 def task_indices(cfg, task_set: str) -> list[int]:
     """trainset: the fixed subset every milestone's checkpoint has already
-    been trained on. heldout/heldout100: cfg's 20-/100-task held-out lists
-    (both respect heldout_tasks_override)."""
+    been trained on. heldout/heldout50/heldout100: cfg's 20-/50-/100-task
+    held-out lists (all three respect heldout_tasks_override)."""
     if task_set == "trainset":
         return list(range(min(cfg.milestones)))
     if task_set == "heldout":
         return list(cfg.heldout_tasks("heldout20"))
+    if task_set == "heldout50":
+        return list(cfg.heldout_tasks("heldout50"))
     if task_set == "heldout100":
         return list(cfg.heldout_tasks("heldout100"))
     raise ValueError(f"unknown task_set {task_set!r}, expected one of {TASK_SETS}")
@@ -119,10 +121,10 @@ def is_feasible(cfg, task_idx: int, seq: str) -> bool:
     return similarity(seq, REFERENCE_SEQUENCE[task_idx]) >= cfg.similarity_threshold
 
 
-def sample_raw_proposals(cfg, checkpoint_dir, task_idx: int, work_dir: Path) -> None:
+def sample_raw_proposals(cfg, checkpoint_dir, task_idx: int, work_dir: Path, sampling_pool=None) -> None:
     from peptide_experiment.steps import sample_and_build_init
 
-    sample_and_build_init(cfg, checkpoint_dir, task_idx, work_dir)
+    sample_and_build_init(cfg, checkpoint_dir, task_idx, work_dir, sampling_pool=sampling_pool)
 
 
 def score_candidates(cfg, task_idx: int, candidates: list[str]) -> list[tuple[str, float]]:

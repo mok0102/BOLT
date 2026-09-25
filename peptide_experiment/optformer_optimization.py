@@ -95,6 +95,7 @@ def run_optformer_bo(
     run_id: str,
     milestone: int,
     checkpoint_path: Path,
+    model_provider=None,
 ) -> Path:
     """Self-seeds via steps.build_mutation_init() (OptFormer has no
     task-specific proposer any more than STBO does -- its checkpoint only
@@ -107,6 +108,14 @@ def run_optformer_bo(
     matching how LOLBO's own collected-data CSV already includes infeasible
     rows) until cfg.oracle_budget calls have been made (init pool counts
     toward the budget, same convention run_bo()'s init_size baseline uses).
+
+    model_provider: None (default) loads checkpoint_path fresh right here,
+    same as ever. A zero-arg callable returning (model, tokenizer) (e.g. a
+    memoizing closure built by the caller, which loops this over many tasks
+    against the same checkpoint): called only once we know this task
+    actually needs computing (after the dest_csv skip check below), so a
+    fully-resumed run pays zero load cost -- see
+    experiments/eval2/compute/fixed_target_bo.py's OptFormer branch.
     """
     from apex_oracle import apex_wrapper
 
@@ -126,8 +135,11 @@ def run_optformer_bo(
     edges, num_bins = bin_meta["edges"], bin_meta["num_bins"]
 
     device = resolve_device("auto")
-    dtype = resolve_dtype("auto", device)
-    model, tokenizer = _load_model_and_tokenizer(checkpoint_path, device, dtype)
+    if model_provider is not None:
+        model, tokenizer = model_provider()
+    else:
+        dtype = resolve_dtype("auto", device)
+        model, tokenizer = _load_model_and_tokenizer(checkpoint_path, device, dtype)
 
     # cfg.oracle_budget counts calls made AFTER the init pool, matching
     # steps.run_bo()'s --max_n_oracle_calls convention (init_size + oracle_budget

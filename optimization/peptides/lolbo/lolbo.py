@@ -17,7 +17,7 @@ sys.path.append(f"{parent_dir}")
 from lolbo.utils.bo_utils.gp_map_saas import MAPSaasGPModel
 from lolbo.utils.bo_utils.poe_gp import PoEGPModel
 from lolbo.utils.bo_utils.ppgpr import GPModelDKL
-from lolbo.utils.bo_utils.turbo import TurboState, generate_batch, update_state
+from lolbo.utils.bo_utils.turbo import TurboState, generate_batch, update_state, update_tr_length
 from lolbo.utils.utils import (
     update_constraint_surr_models,
     update_models_end_to_end_with_constraints,
@@ -541,11 +541,8 @@ class LOLBOState:
             batch_size=self.bsz,
             acqf=self.acq_func,
             constraint_model_list=constraint_model_list,
+            C=self.train_c,
         )
-        if self.objective.similarity is not None:
-            # We need to get the GP lengthscales
-            ls = self.model.get_lengthscales()
-            breakpoint()
 
         # 2. Evaluate the batch of candidates by calling oracle
         with torch.no_grad():
@@ -561,6 +558,14 @@ class LOLBOState:
             y_next = torch.from_numpy(y_next).float()
             self.update_next(z_next, y_next, x_next, c_next, acquisition=True)
         else:
+            # Every candidate in the batch got filtered out before scoring --
+            # an unambiguous failure the trust region must see too, not just
+            # progress_fails_since_last_e2e (update_next/update_state is
+            # never reached on this path since there's no y_next/c_next to
+            # pass it).
             self.progress_fails_since_last_e2e += 1
+            self.tr_state.success_counter = 0
+            self.tr_state.failure_counter += 1
+            self.tr_state = update_tr_length(self.tr_state)
             if self.verbose:
                 print("GOT NO VALID Y_NEXT TO UPDATE DATA, RERUNNING ACQUISITOIN...")

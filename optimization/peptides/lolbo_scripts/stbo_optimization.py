@@ -26,6 +26,14 @@ class STBOOptimization(APEXConstrainedDiverseOptimization):
     """
 
     def load_train_data(self):
+        # Caller supplied a pre-built init pool (fixed_target_bo.py's
+        # SHARED_INIT_ARMS mechanism, the same canonical mutation pool
+        # MTBO/POGPE/SGPE/OptFormer reuse for this task) -- use it instead
+        # of drawing STBO's own fresh, unseeded mutations, so STBO's search
+        # is compared against the others from the identical starting point.
+        if self.init_data_path is not None:
+            return super().load_train_data()
+
         task_idx = self.constraint_types[0]
         reference_seq = REFERENCE_SEQUENCE[task_idx]
 

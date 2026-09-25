@@ -13,42 +13,87 @@
 # chain from task 0, since matched-intervention's self-reinforcing sampling
 # genuinely diverges once ORPT starts sampling subsequent tasks.
 #
-# mi_max_candidates_per_task=16 (down from an earlier 60) and
-# mi_max_tasks_per_milestone=50 (new -- was unset/unbounded) are this
-# session's own cost cuts for the reduced-budget schedule: pair-construction
-# cost is linear in both max_candidates_per_task and the number of tasks
-# used per milestone, and build_orpt_pairs() otherwise re-runs over EVERY
-# task in [0, milestone) at every one of the 7 milestones (10+20+...+600 =
-# 1830 task-constructions/chain without the cap). mi_num_backgrounds=4
-# (down from 8, explicit user choice for further speed -- each candidate
-# costs exactly mi_num_backgrounds real-BO calls) trades away some of the
-# reliability filter's statistical power (SE ~ 1/sqrt(M)); a much smaller
-# smoke-scale (m~5) test previously found M<8 yielding ~0 trainable pairs,
-# but that was at a far noisier/smaller pool -- watch early-milestone pair
-# yield in the logs ("N pair(s) rejected by the H0 necessary condition" /
-# "kept K/target") and reconsider if it collapses at this real scale.
-# peptide_ablation_orpt_h0.yaml must match this value exactly (both do).
-# BOLT-<m>'s own SFT dataset still uses every task in [0, milestone) --
-# mi_max_tasks_per_milestone only subsamples the DPO stage's pair pool.
+# mi_max_tasks_per_milestone: REMOVED (2026-09-23, was 50). A prior session
+# added this as a pure cost cut, but capping the DPO pair pool to a fixed
+# random 50-task subsample at every milestone regardless of milestone size
+# means ORPT's own preference-learning signal never actually scales with
+# the task-scaling schedule this experiment exists to measure (only
+# BOLT-<milestone>, the base policy ORPT fine-tunes from, was scaling
+# properly -- see the note a few lines below). At milestone 600 that was
+# 50/600 = ~8% of eligible tasks. Removed once real measured cost turned
+# out much cheaper than the "1830 task-constructions" worst case implied:
+# with mi_num_backgrounds=8/mi_max_candidates_per_task=24, a real capped
+# run's pair-construction phase measured ~19min/50 tasks (8-GPU parallel,
+# ~23s/task-construction) and was FLAT across milestones 50-600 (identical
+# ~19min whether pairs came from 50/50 or 50/600 tasks) -- so the true
+# per-milestone cost of pair construction is linear in task count actually
+# used, not in milestone size. Full un-capped estimate: milestones
+# 250/400/400/600 at ~23s/task -> ~96/153/192/230 min respectively, ~11.6h
+# total for pair construction across the whole schedule (milestones 10/20/50
+# unaffected, already using every available task) -- an easy same-day job on
+# 8 dedicated GPUs, not the multi-day worst case the original cap assumed.
+#
+# mi_num_backgrounds=8/mi_max_candidates_per_task=24/mi_background_size=20
+# (2026-09 diagnostic-session values, replacing an earlier 4/16/unset that
+# collapsed pair yield at real milestone-600 scale): a full run against
+# `peptide_main_orpt_h1`'s actual milestone-600 log (6000 real comparisons,
+# recomputed by hand against pair_construction.py's own formulas) found the
+# collapse was NOT bank starvation (bank was min 200/median 699 vs. a need of
+# 115) but two structural issues instead:
+#   1. U_1=max(background+candidate+BO batch) dilutes the candidate's own
+#      contribution 1/init_size (=1/100) when the pair-construction shared
+#      base set reuses the deployment pool size init_size=100 (~1.66%
+#      incumbent rate measured directly) -- ~41% sign-conflicting diffs and
+#      ~9% all-zero diffs out of the 6000 comparisons, both consistent with
+#      background noise dominating a heavily-diluted signal. Fixed by
+#      mi_background_size=20: pair construction now samples an m-1=19
+#      shared base set (NOT init_size-1=99) for its own matched comparisons,
+#      independent of the deployment BO's own init_size=100 (config.py's
+#      mi_background_size docstring) -- this is a deliberate train/test
+#      pool-size mismatch, accepted after confirming U_1's max(...) itself
+#      is a faithful, paper-required implementation (paper/method.tex's
+#      Eq. marginal-outcome/true-outcome-utility), not a bug to "fix" by
+#      changing the utility definition.
+#   2. mi_num_backgrounds=4 with mi_z_min=1.0 hit a real arithmetic
+#      knife-edge: whenever exactly 1 of M backgrounds has a nonzero diff
+#      and the rest are exactly 0, the paired SE formula gives
+#      SE == |mean| identically (verified by hand), so z = |mean|/(SE+eps)
+#      is always just under 1.0 regardless of the actual difference's
+#      magnitude -- responsible for ~14% of all comparisons (~22% of
+#      failures). mi_num_backgrounds=8 reduces how often this exact
+#      1-of-M pattern occurs but does not eliminate it structurally (an SE
+#      floor was considered and explicitly not chosen this round).
+# Real-BO-call cost per candidate is still exactly mi_num_backgrounds, so
+# this raises real-BO calls/task from 16*4=64 to 24*8=192 (~3x) -- watch
+# early-milestone pair yield in the logs ("N pair(s) rejected by the H0
+# necessary condition" / "kept K/target") to confirm the fix actually
+# raises yield before trusting it at the full 600-milestone schedule.
+# peptide_ablation_orpt_h0.yaml must match these values exactly (both do).
+# mi_max_tasks_per_milestone is unset (null): every task in [0, milestone)
+# is used for pair construction, same as BOLT-<m>'s own SFT dataset -- see
+# the removed-cap note above.
 #
 # orpt_beta=0.25/orpt_lr=2e-5: grid-search-confirmed winning ORPT
 # hyperparameters from an earlier session (see git history for the sweep
 # cells this used to live under, peptide_experiment/configs/gridsearch/,
 # removed as stale once their conclusion was baked in here).
 #
-# mi_parallel_gpus=[4..7]: this arm's own dedicated 4-GPU slice, disjoint
-# from peptide_main_bolt.yaml's [0..3] (which peptide_ablation_orpt_h0.yaml
-# takes over once that arm's own chain finishes) -- see
-# experiments/eval2/pipelines/run_train.sh's header for the full
-# concurrent-pipeline layout. cuda_visible_devices="4" (not null) pins the
+# mi_parallel_gpus=[0..7]: this run uses all 8 GPUs, not the [4..7]
+# dedicated-slice layout experiments/eval2/pipelines/run_train.sh's header
+# describes for running all arms (BOLT/ORPT-H1/ORPT-H0) concurrently --
+# this is instead a standalone ORPT-H1-only launch (this diagnostic
+# session's fix validation), so it isn't sharing GPUs with a concurrent
+# BOLT/ablation chain right now. cuda_visible_devices="4" pins the
 # per-task BO trajectory-sampling calls the same way peptide_main_bolt.yaml's
 # own comment explains (steps.py::run_bo, called outside
 # distributed_finetune_launch, never parallelized across multiple GPUs for
-# a single task). Check nvidia-smi fresh at launch time regardless -- do
-# not assume these ids are still free (shared machine).
+# a single task) -- unaffected by mi_parallel_gpus, which only governs
+# one-step-BO pair construction and SFT/DPO's distributed training device
+# list. Check nvidia-smi fresh at launch time regardless -- do not assume
+# these ids are still free (shared machine).
 experiment_id: peptide_main_orpt_h1
 milestones: [10, 20, 50, 250, 400, 500, 600]
-mi_parallel_gpus: ["4", "5", "6", "7"]
+mi_parallel_gpus: ["0", "1", "2", "3", "4", "5", "6", "7"]
 cuda_visible_devices: "4"
 oracle_budget: 500
 init_size: 100
@@ -62,13 +107,13 @@ orpt_beta: 0.25
 orpt_lr: 2.0e-5
 orpt_torchtune_config: main_qwen_2_5_3B_lora_dpo_bsz32_rank16.yaml
 orpt_pair_source: matched_intervention
-mi_num_backgrounds: 4
+mi_num_backgrounds: 8
+mi_background_size: 20
 mi_tau_q: 1.0
 mi_z_min: 1.0
 mi_delta_t: 0.0
 mi_target_pairs_per_task: 30
-mi_max_candidates_per_task: 16
-mi_max_tasks_per_milestone: 50
+mi_max_candidates_per_task: 24
 mi_bo_steps: 1
 # mi_require_h0 left at its default (true) -- this IS the H0-AND-H1 arm.
 

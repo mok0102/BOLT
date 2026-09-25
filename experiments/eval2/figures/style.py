@@ -21,6 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import pandas as pd
 
 # ARM_COLOR: dict[str, str] = {
 #     "BOLT": "#2a78d6",
@@ -47,7 +48,12 @@ ARM_COLOR: dict[str, str] = {
     "BOLT":      "#3C5488B2",
     "STBO":      "#00A087B2",
     "MTBO":      "#4DBBD5B2",
-    "POGPE":     "#8491B4B2",
+    # was #8491B4B2 (grey-blue) -- too close to BOLT's navy at a glance,
+    # especially once main_bo.py's fig1b shades both across a T-indexed
+    # alpha ramp. #B09C85 is the one npg palette color the rest of this
+    # dict never uses (tan/khaki), so it stays visually distinct from both
+    # the blue family (BOLT/MTBO) and the brown OptFormer.
+    "POGPE":     "#B09C85B2",
     "SGPE":      "#91D1C2B2",
     "OptFormer": "#7E6148B2",
     "LLAMBO":    "#6F6F6FB2",
@@ -122,11 +128,15 @@ def style_axis(ax) -> None:
     ax.set_axisbelow(True)
 
 
-def place_legend(ax, handles=None, labels=None) -> None:
+def place_legend(ax, handles=None, labels=None, fontsize=None) -> None:
     """The one fixed legend placement every module must use: outside the
     axes, upper-left anchored just past the right edge, so it never
-    overlaps data regardless of curve shape."""
+    overlaps data regardless of curve shape. fontsize=None keeps
+    rcParams["legend.fontsize"] (the shared default); pass an explicit size
+    only for a figure with unusually many entries (see main_bo.py's fig1b)."""
     kwargs = dict(loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False, borderaxespad=0.0)
+    if fontsize is not None:
+        kwargs["fontsize"] = fontsize
     if handles is not None:
         ax.legend(handles, labels, **kwargs)
     else:
@@ -138,5 +148,16 @@ def savefig(fig, out_dir: Path, name: str) -> Path:
     path = out_dir / f"{name}.png"
     fig.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
+    print(f"[eval2] wrote {path}")
+    return path
+
+
+def save_csv(df: pd.DataFrame, out_dir: Path, name: str) -> Path:
+    """Write the exact rows a figure was plotted from, alongside its PNG
+    (same stem, .csv extension) -- so a paper table can cite precise numbers
+    without re-deriving them from the summary CSVs by hand."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{name}.csv"
+    df.to_csv(path, index=False)
     print(f"[eval2] wrote {path}")
     return path
