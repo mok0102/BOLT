@@ -6,6 +6,7 @@ import glob
 import math
 import sys
 import os
+import threading
 
 file_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(f"{file_dir}")
@@ -42,6 +43,7 @@ word2idx, idx2word = make_vocab()  # make amino acid vocabulary
 # map_location="cpu": predict_APEX already calls .cuda() on each model
 # right before use, so no GPU memory is touched until actually needed.
 APEX_models: list | None = None
+_APEX_PREDICT_LOCK = threading.Lock()
 file_dir = os.path.dirname(os.path.abspath(__file__))
 trained_models_dir = os.path.join(file_dir, "..", "apex", "trained_models")
 
@@ -66,7 +68,7 @@ batch_size = 3000  # change according to your GPU memory
 
 # Use pretrained APEX models to predict species-specific antimicrobial activity (i.e., minimum inhibitory concentration [MIC]; unit: uM)
 # 8 pretrained APEX models are provided, and predictions are averaged
-def predict_APEX(seq_list):
+def _predict_APEX_unlocked(seq_list):
     apex_models = _load_apex_models()
     for ensemble_id in range(len(apex_models)):
         AMP_model = apex_models[ensemble_id].cuda().eval()
@@ -116,6 +118,14 @@ def predict_APEX(seq_list):
     torch.cuda.empty_cache()
 
     return AMP_pred
+
+
+def predict_APEX(seq_list):
+    # The ensemble is shared by all threads in this process. Loading it and
+    # moving each model to CUDA mutate that shared state; concurrent calls can
+    # segfault while another thread is running a model's forward pass.
+    with _APEX_PREDICT_LOCK:
+        return _predict_APEX_unlocked(seq_list)
 
 
 apex_wrapper = predict_APEX

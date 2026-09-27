@@ -40,7 +40,7 @@ if str(FINE_TUNING_DIR) not in sys.path:
 from make_dpo_train_data_csv import SYSTEM_PROMPT, load_reference_sequence, make_messages  # noqa: E402
 
 from ..config import ExperimentConfig
-from .candidate_bank import build_eligible_bank, build_eligible_bank_from_init_scores, min_bank_size_needed
+from .candidate_bank import build_eligible_bank, build_eligible_bank_from_init_scores
 from .pair_construction import construct_pairs_for_task
 from .warm_pool import create_pool
 from .warm_scoring_pool import create_scoring_pool, score_sequences_parallel
@@ -206,11 +206,6 @@ def main() -> None:
                 bank = build_eligible_bank_from_init_scores(candidate_init, candidate_scores, reference_sequence, args.similarity_threshold)
             else:
                 bank = build_eligible_bank(input_csv, reference_sequence, args.similarity_threshold)
-            min_needed = min_bank_size_needed(args.m, num_reserved=args.max_candidates_per_task)
-            if len(bank) < min_needed:
-                print(f"[build_pairs] {input_csv}: bank has {len(bank)} candidates, need >= {min_needed}, skipping task")
-                continue
-
             if scoring_pool is not None:
                 log_probs = score_sequences_parallel(
                     scoring_pool,

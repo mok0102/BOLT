@@ -89,7 +89,12 @@ def construct_pairs_for_task(
     the whole reserved set from every one of the num_backgrounds shared
     backgrounds (so every (candidate, background) combination is valid by
     construction -- no candidate ever ends up inside a background it's
-    later compared against). Evaluates every reserved candidate against
+    later compared against). If bank is smaller than min_bank_size_needed(m,
+    max_candidates), max_candidates/m are both clamped down to whatever the
+    bank actually supports rather than skipping the task -- a short bank
+    still contributes a (smaller) set of pairs instead of being dropped.
+
+    Evaluates every reserved candidate against
     every background in a single batch (each candidate costs exactly
     num_backgrounds real-BO calls per bo_steps=1, or the free zero-step
     ablation per bo_steps=0) -- no early stopping, so the run always costs
@@ -120,8 +125,13 @@ def construct_pairs_for_task(
     dropped by this gate."""
     min_needed = min_bank_size_needed(m, num_reserved=max_candidates)
     if len(bank) < min_needed:
-        print(f"[mi_orpt pair_construction] task ref={reference_sequence!r}: bank={len(bank)} (need >={min_needed}), skipping")
-        return []
+        max_candidates = max(2, min(max_candidates, len(bank) - 2))
+        m = max(2, len(bank) - max_candidates + 1)
+        print(
+            f"[mi_orpt pair_construction] task ref={reference_sequence!r}: bank={len(bank)} "
+            f"(need >={min_needed} for the configured max_candidates/m), "
+            f"using reduced max_candidates={max_candidates}/m={m} instead of skipping"
+        )
 
     q_t = ReferenceAlignedDistribution(bank, log_likelihoods, tau_q)
 

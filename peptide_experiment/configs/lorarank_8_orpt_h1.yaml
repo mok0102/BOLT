@@ -1,0 +1,59 @@
+# ORPT-H1 at the original paper scale, rank/schedule-matched to the existing
+# runs/lorarank_8/peptide_main_bolt checkpoint (init_size=1000/oracle_budget=
+# 20000, milestones 126..900, lora_rank=8 via config.py's own defaults --
+# see peptide_main_bolt_fig1b.yaml for that schedule), combined with the
+# current matched-intervention BO-utility settings from
+# peptide_main_orpt_h1.yaml (build_orpt/orpt_*/mi_* below, copied verbatim --
+# see that file's own header comment for the full rationale behind each
+# value). NOT a resume of runs/lorarank_8/peptide_main_orpt_mi: that run
+# predates peptide_experiment/mi_orpt/ (orpt_pair_source defaulted to
+# objective_ranked) and was also trained at lora_rank=4, not rank=8, so it's
+# neither BO-utility-matched nor rank-matched to BOLT. Own experiment_id/
+# run_dir -- independent trajectory chain from task 0, same reasoning as
+# peptide_main_orpt_h1.yaml's own header comment.
+#
+# experiment_id is flat (no embedded "/"), unlike an earlier attempt at this
+# config -- LOLBO's own optimize.py::log_topk_table_wandb writes to
+# optimization_all_collected_data/<experiment_id-derived name>.csv via a bare
+# to_csv() with no mkdir(parents=True), so an experiment_id containing "/"
+# (e.g. lorarank_8/peptide_main_orpt_h1) makes it try to write into a
+# nonexistent subdirectory and crash (confirmed: OSError mid-run). This is
+# why runs/lorarank_8/peptide_main_bolt and .../peptide_main_orpt_mi are
+# real directories with separate flat-experiment_id symlinks
+# (lorarank_8_bolt_fig1b / lorarank_8_orpt_mi_fig1b) pointing at them rather
+# than being produced by a slash-containing experiment_id directly -- same
+# fix applied here in reverse: runs/lorarank_8/peptide_main_orpt_h1 is a
+# symlink to this flat run_dir (runs/lorarank_8_orpt_h1), not created by the
+# experiment_id itself.
+experiment_id: lorarank_8_orpt_h1
+milestones: [126, 252, 378, 504, 630, 756, 900]
+oracle_budget: 20000
+init_size: 1000
+bsz: 50
+sft_epochs: 5
+similarity_threshold: 0.75
+table_k_checkpoints: [20, 50, 100, 200, 500]
+# torchtune_config/orpt_torchtune_config intentionally left unset -- config.py
+# defaults (qwen_2_5_3B_lora.yaml / qwen_2_5_3B_lora_dpo.yaml) are lora_rank=8/
+# lora_alpha=16, matching runs/lorarank_8/peptide_main_bolt's actual
+# checkpoints (confirmed via their saved torchtune_config.yaml snapshots).
+
+mi_parallel_gpus: ["0", "1", "2", "3", "4", "5", "6", "7"]
+cuda_visible_devices: "4"
+
+build_orpt: true
+orpt_epochs: 1
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 8
+mi_background_size: 20
+mi_tau_q: 1.0
+mi_z_min: 1.0
+mi_delta_t: 0.0
+mi_target_pairs_per_task: 30
+mi_max_candidates_per_task: 24
+mi_bo_steps: 1
+# mi_require_h0 left at its default (true) -- this IS the H0-AND-H1 arm.
+mi_candidate_temperature: 1.5
+mi_candidate_pool_size: 2000
