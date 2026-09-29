@@ -202,7 +202,8 @@ FIG1B_TICK_LABEL_FONTSIZE = 12  # not the full 2x (16) -- x-axis tick numbers ru
 
 
 def _fig1b_series(cfg, bolt_run_dir: Path, orpt_run_dir: Path, task_set: str, pool_size: int,
-                   milestones: tuple[int, ...], n_experts: tuple[int, ...], single_milestone: int) -> list[dict]:
+                   milestones: tuple[int, ...], n_experts: tuple[int, ...], single_milestone: int,
+                   orpt_arm: str = "ORPT-MI") -> list[dict]:
     """Collect every line fig1b can plot -- (arm, series_key, work_dir,
     task_ids, color, label) -- computed once and shared by every output
     variant (full/log/boltorpt-zoom), so they never disagree on which tasks
@@ -234,15 +235,15 @@ def _fig1b_series(cfg, bolt_run_dir: Path, orpt_run_dir: Path, task_set: str, po
     for i, m in enumerate(milestones):
         frac = i / (n_m - 1) if n_m > 1 else 1.0
         bolt_dir, bolt_ids = _available_task_ids(cfg, bolt_run_dir, task_set, "BOLT", m, pool_size)
-        orpt_dir, orpt_ids = _available_task_ids(cfg, orpt_run_dir, task_set, "ORPT-MI", m, pool_size)
+        orpt_dir, orpt_ids = _available_task_ids(cfg, orpt_run_dir, task_set, orpt_arm, m, pool_size)
         shared = sorted(bolt_ids & orpt_ids)
         if not shared:
-            print(f"[eval2.main_bo.fig1b] BOLT/ORPT-MI milestone={m}: no shared tasks, skipping")
+            print(f"[eval2.main_bo.fig1b] BOLT/{orpt_arm} milestone={m}: no shared tasks, skipping")
             continue
-        print(f"[eval2.main_bo.fig1b] BOLT/ORPT-MI milestone={m}: intersection={len(shared)} "
-              f"(BOLT={len(bolt_ids)}, ORPT-MI={len(orpt_ids)})")
+        print(f"[eval2.main_bo.fig1b] BOLT/{orpt_arm} milestone={m}: intersection={len(shared)} "
+              f"(BOLT={len(bolt_ids)}, {orpt_arm}={len(orpt_ids)})")
         bolt_specs.append(("BOLT", m, bolt_dir, shared, _shade(style.arm_color("BOLT"), frac), f"BOLT-{m}"))
-        orpt_specs.append(("ORPT-MI", m, orpt_dir, shared, _shade(style.arm_color("ORPT-MI"), frac), f"ORPT-{m}"))
+        orpt_specs.append((orpt_arm, m, orpt_dir, shared, _shade(style.arm_color(orpt_arm), frac), f"ORPT-{m}"))
     for args in bolt_specs + orpt_specs:
         _add(*args)
 
@@ -284,7 +285,7 @@ def _fig1b_series(cfg, bolt_run_dir: Path, orpt_run_dir: Path, task_set: str, po
 # intentional one-off exception to style.py's "color = arm identity"
 # convention, since this figure's whole point is comparing the SAME T
 # across two arms, not telling ~20 different arms apart.
-FIG1B_BOLTORPT_LINESTYLE: dict[str, str] = {"BOLT": "--", "ORPT-MI": "-"}
+FIG1B_BOLTORPT_LINESTYLE: dict[str, str] = {"BOLT": "--", "ORPT-MI": "-", "ORPT-H1": "-"}
 
 
 def _boltorpt_colors(milestones: tuple[int, ...]) -> dict[int, str]:
@@ -294,7 +295,8 @@ def _boltorpt_colors(milestones: tuple[int, ...]) -> dict[int, str]:
 
 
 def _boltorpt_specs(cfg, bolt_run_dir: Path, orpt_run_dir: Path, task_set: str, pool_size: int,
-                     milestones: tuple[int, ...] = FIG1B_ALL_MILESTONES) -> list[dict]:
+                     milestones: tuple[int, ...] = FIG1B_ALL_MILESTONES,
+                     orpt_arm: str = "ORPT-MI") -> list[dict]:
     """BOLT/ORPT-MI at every milestone -- this figure is the dedicated,
     full-detail BOLT-vs-ORPT-MI comparison (the decluttered main fig1b
     figure only keeps FIG1B_REPRESENTATIVE_MILESTONES) -- colored by
@@ -304,18 +306,18 @@ def _boltorpt_specs(cfg, bolt_run_dir: Path, orpt_run_dir: Path, task_set: str, 
     specs: list[dict] = []
     for m in milestones:
         bolt_dir, bolt_ids = _available_task_ids(cfg, bolt_run_dir, task_set, "BOLT", m, pool_size)
-        orpt_dir, orpt_ids = _available_task_ids(cfg, orpt_run_dir, task_set, "ORPT-MI", m, pool_size)
+        orpt_dir, orpt_ids = _available_task_ids(cfg, orpt_run_dir, task_set, orpt_arm, m, pool_size)
         shared = sorted(bolt_ids & orpt_ids)
         if not shared:
             print(f"[eval2.main_bo.fig1b.boltorpt] milestone={m}: no shared tasks, skipping")
             continue
         print(f"[eval2.main_bo.fig1b.boltorpt] milestone={m}: intersection={len(shared)} "
-              f"(BOLT={len(bolt_ids)}, ORPT-MI={len(orpt_ids)})")
+              f"(BOLT={len(bolt_ids)}, {orpt_arm}={len(orpt_ids)})")
         color = colors[m]
         specs.append({"arm": "BOLT", "series_key": m, "work_dir": bolt_dir, "task_ids": shared,
                        "color": color, "linestyle": FIG1B_BOLTORPT_LINESTYLE["BOLT"], "label": f"BOLT-{m}"})
-        specs.append({"arm": "ORPT-MI", "series_key": m, "work_dir": orpt_dir, "task_ids": shared,
-                       "color": color, "linestyle": FIG1B_BOLTORPT_LINESTYLE["ORPT-MI"], "label": f"ORPT-{m}"})
+        specs.append({"arm": orpt_arm, "series_key": m, "work_dir": orpt_dir, "task_ids": shared,
+                       "color": color, "linestyle": FIG1B_BOLTORPT_LINESTYLE[orpt_arm], "label": f"ORPT-{m}"})
     return specs
 
 
@@ -392,6 +394,7 @@ def generate_fig1b(
     all_milestones: tuple[int, ...] = FIG1B_BOLTORPT_MILESTONES,
     n_experts: tuple[int, ...] = FIG1B_N_EXPERTS,
     single_milestone: int = 900,
+    orpt_arm: str = "ORPT-MI",
 ) -> dict[str, Path | None]:
     """Writes three PNG+CSV pairs sharing the same underlying series (see
     _fig1b_series). Log y-axis is the default (baselines sit at 26-44 MIC,
@@ -412,8 +415,10 @@ def generate_fig1b(
     """
     cfg = peptide.load_config(str(config_path))
     pool_size = target_pool_size if target_pool_size is not None else cfg.init_size
-    specs = _fig1b_series(cfg, bolt_run_dir, orpt_run_dir, task_set, pool_size, representative_milestones, n_experts, single_milestone)
-    boltorpt_specs = _boltorpt_specs(cfg, bolt_run_dir, orpt_run_dir, task_set, pool_size, milestones=all_milestones)
+    specs = _fig1b_series(cfg, bolt_run_dir, orpt_run_dir, task_set, pool_size, representative_milestones,
+                           n_experts, single_milestone, orpt_arm=orpt_arm)
+    boltorpt_specs = _boltorpt_specs(cfg, bolt_run_dir, orpt_run_dir, task_set, pool_size,
+                                      milestones=all_milestones, orpt_arm=orpt_arm)
 
     base = f"main_bo_fig1b_{DOMAIN_SLUG}"
     return {

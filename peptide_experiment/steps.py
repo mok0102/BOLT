@@ -297,6 +297,13 @@ def distributed_finetune_launch(
     return ["--master-port", str(master_port)], [f"batch_size={per_gpu_batch_size}"], launch_cfg
 
 
+def _similarity(seq: str, reference_seq: str) -> float:
+    from Levenshtein import distance as edit_distance
+
+    length = len(reference_seq)
+    return (length - edit_distance(seq, reference_seq)) / length
+
+
 def _pad_to_size(init_path: Path, scores_path: Path, target_size: int) -> None:
     """Known failure mode (from prior smoke testing): an untuned/low-diversity
     model can plateau well below target_size unique candidates no matter how
@@ -335,8 +342,6 @@ def _ensure_constraint_feasible(
     (the same method stbo_optimization.py uses), replacing the
     least-similar entries.
     """
-    from Levenshtein import distance as edit_distance
-
     from apex_oracle import apex_wrapper
     from apex_oracle.init_data.create_mutations import generate_unique_mutations
     from apex_oracle.refseqs import REFERENCE_SEQUENCE
@@ -345,11 +350,7 @@ def _ensure_constraint_feasible(
     seqs = [line for line in init_path.read_text().splitlines() if line.strip()]
     scores = [float(line) for line in scores_path.read_text().splitlines() if line.strip()]
 
-    def similarity(seq: str) -> float:
-        length = len(reference_seq)
-        return (length - edit_distance(seq, reference_seq)) / length
-
-    sims = [similarity(s) for s in seqs]
+    sims = [_similarity(s, reference_seq) for s in seqs]
     n_feasible = sum(1 for s in sims if s >= cfg.similarity_threshold)
     min_feasible = max(1, len(seqs) // 10)
     if n_feasible >= min_feasible:
@@ -440,6 +441,7 @@ def sample_and_build_init(
     task_idx: int,
     work_dir: Path,
     temperature: float | None = None,
+    temperature_step: float = 0.0,
     *,
     sampling_pool: "object | None" = None,
 ) -> tuple[Path, Path]:
@@ -452,6 +454,15 @@ def sample_and_build_init(
     default (1) -- every existing call site's behavior is unchanged. A float
     value overrides it, e.g. for mi_orpt's dedicated candidate-pool sampling
     (cfg.mi_candidate_temperature) without affecting any other caller.
+
+    temperature_step: added to `temperature` on each successive retry attempt
+    below (attempt 1 uses `temperature` itself, attempt 2 uses
+    `temperature + temperature_step`, ...). No effect when `temperature` is
+    None. Default 0.0 (flat, unchanged behavior) -- eval2/compute/
+    generate_raw.py's cfg.eval_raw_temperature_step is the one caller that
+    sets this non-zero, to widen sampling entropy on top of the existing
+    pool_multiplier widening when a plateaued unique-candidate count suggests
+    entropy, not sample count, is the retry bottleneck.
 
     sampling_pool: None (default) keeps the original behavior exactly -- one
     fresh `sampling_transformers.py` subprocess per attempt. A
@@ -485,14 +496,21 @@ def sample_and_build_init(
         _ensure_constraint_feasible(cfg, task_idx, init_path, scores_path)
         return init_path, scores_path
 
+    from apex_oracle.refseqs import REFERENCE_SEQUENCE
+
+    reference_seq = REFERENCE_SEQUENCE[task_idx]
     fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
 
     pool_multiplier = 1
     max_attempts = 5
     n_unique = 0
+    n_feasible = 0
     sample_jsonls: list[Path] = []
     for attempt in range(1, max_attempts + 1):
         samples_per_peptide = min(cfg.init_size * pool_multiplier, MAX_SAMPLES_PER_CALL)
+        attempt_temperature = None
+        if temperature is not None:
+            attempt_temperature = temperature + (attempt - 1) * temperature_step
         attempt_jsonl = work_dir / f"task_{task_idx:04d}_sampled_attempt{attempt}.jsonl"
         cmd = [
             sys.executable,
@@ -508,8 +526,8 @@ def sample_and_build_init(
             "--output-file",
             attempt_jsonl,
         ]
-        if temperature is not None:
-            cmd += ["--temperature", temperature]
+        if attempt_temperature is not None:
+            cmd += ["--temperature", attempt_temperature]
 
         used_pool = False
         if sampling_pool is not None and not sampling_pool.broken:
@@ -524,12 +542,13 @@ def sample_and_build_init(
                     f"+ [warm-sampling-pool gpu={sampling_pool.gpu}] sampling_transformers "
                     f"--model-path {model_path} --start-index {task_idx} "
                     f"--samples-per-peptide {samples_per_peptide} --output-file {attempt_jsonl}"
+                    + (f" --temperature {attempt_temperature}" if attempt_temperature is not None else "")
                 )
                 sampling_pool.generate(
                     task_idx=task_idx,
                     samples_per_peptide=samples_per_peptide,
                     output_file=attempt_jsonl,
-                    temperature=temperature,
+                    temperature=attempt_temperature,
                 )
                 used_pool = True
             except BrokenProcessPool as e:
@@ -557,19 +576,32 @@ def sample_and_build_init(
             cwd=fine_tuning_dir / "sampled_output_from_ft",
             cfg=cfg,
         )
-        n_unique = sum(1 for line in init_path.read_text().splitlines() if line.strip())
-        if n_unique >= cfg.init_size:
+        seqs = [line.strip() for line in init_path.read_text().splitlines() if line.strip()]
+        n_unique = len(seqs)
+        # Stop on FEASIBLE count, not raw unique count: a task can reach
+        # cfg.init_size unique sequences in one attempt while few of them are
+        # within cfg.similarity_threshold of the reference (observed for real
+        # on eval2/arm_specs/fig1b.yaml's ORPT-H1 arm -- one task hit 1000+
+        # unique candidates on attempt 1 yet only 54 were feasible), which
+        # used to end the loop before temperature/pool_multiplier ever got a
+        # chance to widen the search. feasible_pool_with_draw_counts
+        # (eval2/core/pools.py) re-derives its own feasible-only pool from
+        # the raw generations regardless of what this loop decides, so this
+        # only affects how hard we try -- never what's fed to a strict
+        # downstream feasibility filter.
+        n_feasible = sum(1 for s in seqs if _similarity(s, reference_seq) >= cfg.similarity_threshold)
+        if n_feasible >= cfg.init_size:
             break
         print(
-            f"[task {task_idx}] only {n_unique}/{cfg.init_size} unique candidates "
-            f"after dedup across {len(sample_jsonls)} sampling call(s) "
+            f"[task {task_idx}] only {n_feasible}/{cfg.init_size} feasible ({n_unique} unique) "
+            f"candidates after dedup across {len(sample_jsonls)} sampling call(s) "
             f"(attempt {attempt}/{max_attempts}), sampling {samples_per_peptide} more"
         )
         pool_multiplier *= 2
     else:
         print(
-            f"[task {task_idx}] giving up on reaching {cfg.init_size} unique candidates "
-            f"after {max_attempts} attempts ({n_unique} found); padding instead"
+            f"[task {task_idx}] giving up on reaching {cfg.init_size} feasible candidates "
+            f"after {max_attempts} attempts ({n_feasible} feasible, {n_unique} unique found); padding instead"
         )
 
     _pad_to_size(init_path, scores_path, cfg.init_size)

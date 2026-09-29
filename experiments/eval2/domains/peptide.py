@@ -124,7 +124,11 @@ def is_feasible(cfg, task_idx: int, seq: str) -> bool:
 def sample_raw_proposals(cfg, checkpoint_dir, task_idx: int, work_dir: Path, sampling_pool=None) -> None:
     from peptide_experiment.steps import sample_and_build_init
 
-    sample_and_build_init(cfg, checkpoint_dir, task_idx, work_dir, sampling_pool=sampling_pool)
+    sample_and_build_init(
+        cfg, checkpoint_dir, task_idx, work_dir,
+        temperature=cfg.eval_raw_temperature, temperature_step=cfg.eval_raw_temperature_step,
+        sampling_pool=sampling_pool,
+    )
 
 
 def score_candidates(cfg, task_idx: int, candidates: list[str]) -> list[tuple[str, float]]:

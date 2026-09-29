@@ -192,7 +192,25 @@ def run_for_spec_task_set_target(
         else:
             built = build_bo_pool(dom, cfg, task_idx, raw_dir, work_dir, target=target)
             if built is None:
-                continue
+                # Fixed-target pool didn't reach `target` feasible unique
+                # candidates -- fall back to core/pools.py's target=None
+                # "fixed budget" mode: use whatever feasible pool actually
+                # resulted, skip only below min_feasible (default 5, just
+                # enough to dodge LOLBO's trust-region hang on a near-empty
+                # pool -- see steps.py::_ensure_constraint_feasible's
+                # docstring). Ports the same design the now-removed
+                # experiments/constraint_violation/run_rejection_sampled_bo.py
+                # used (real_rejection_sample/build_rejection_sampled_init):
+                # report whatever size resulted rather than skip the task
+                # outright -- a smaller-but-real pool is itself part of the
+                # finding, not something to hide by excluding the task.
+                # main_bo.py/main_results_table.py already read each task's
+                # actual pool size (peptide.read_pool_size) rather than
+                # assuming the directory-wide target, precisely so a
+                # directory can mix full-target and fixed-budget tasks.
+                built = build_bo_pool(dom, cfg, task_idx, raw_dir, work_dir, target=None)
+                if built is None:
+                    continue
             pool_size, draws_used = built.pool_size, built.draws_used
             # dataclasses.replace (not an in-place cfg.init_size= mutation,
             # unlike this branch's prior version) -- cfg is shared across

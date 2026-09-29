@@ -50,6 +50,29 @@ class ExperimentConfig:
     # oracle_budget for a smoke run.
     table_k_checkpoints: list[int] = field(default_factory=lambda: [1, 100, 200, 500, 1000])
 
+    # eval2/compute/generate_raw.py's raw-proposal sampling temperature (via
+    # domains/peptide.py::sample_raw_proposals -> steps.py::sample_and_build_init).
+    # None (default): unchanged behavior, sampling_transformers.py's own
+    # default (1.0), fixed across every retry attempt. A float (e.g. 1.5):
+    # eval-time generate_raw starts retries at this temperature instead --
+    # motivated by eval2/arm_specs/fig1b.yaml's ORPT-H1 arm plateauing well
+    # short of fixed_target_bo's target_pool_size at later milestones (e.g.
+    # median 305 unique/feasible candidates found vs. target=1000 at
+    # milestone=900) even after 5 retries at the fixed default temperature.
+    # Scoped to eval2's generate_raw only -- trajectory_chain.py (BOLT-SFT's
+    # own trajectory sampling) and orpt.py's mi_candidate_temperature are
+    # separate call sites and unaffected.
+    eval_raw_temperature: float | None = None
+    # Added to eval_raw_temperature on each successive retry attempt (attempt
+    # 1 uses eval_raw_temperature itself, attempt 2 uses +1*step, ...) --
+    # sample_and_build_init's existing pool_multiplier already widens the
+    # sampling budget per retry; this widens the temperature alongside it,
+    # since a plateaued unique-candidate count across retries at a fixed
+    # temperature (observed above) suggests the model's own sampling entropy,
+    # not the sample count, is the bottleneck. No effect when
+    # eval_raw_temperature is None.
+    eval_raw_temperature_step: float = 0.0
+
     # ORPT (Stage 4): when True, an ORPT-<m> DPO stage is trained on top of
     # every BOLT-<m>, and -- critically -- tasks sampled after the first
     # milestone come from the latest ORPT-<m> checkpoint rather than BOLT-<m>

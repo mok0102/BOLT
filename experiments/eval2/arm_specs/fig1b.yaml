@@ -16,6 +16,21 @@ arms:
     run_dir: runs/lorarank_8/peptide_main_orpt_mi
     checkpoint_template: "{run_dir}/checkpoints/ORPT-{milestone}"
 
+  # Newer, non-matched-intervention ORPT-H1 run at the same paper scale
+  # (checkpoints/ORPT-126..900), trained after ORPT-MI. Kept as a SEPARATE
+  # arm rather than renaming/repointing ORPT-MI in place -- see
+  # peptide_main_orpt_mi_fig1b.yaml's header comment: raw_dir_for/
+  # bo_work_dir_for (core/arms.py) key eval output paths on {arm}-{milestone}
+  # under spec.run_dir, so renaming ORPT-MI to ORPT-H1 here without a fresh
+  # run_dir would either silently orphan ORPT-MI's already-completed
+  # heldout50/heldout100 target1000 coverage or (if run_dir stayed pointed at
+  # peptide_main_orpt_mi) mislabel MI's results as H1. Both arms map to the
+  # same paper label "ORPT" via figures/labels.py, so pick whichever one
+  # feeds a given figure via that figure command's --run-dir arg.
+  - name: ORPT-H1
+    run_dir: runs/lorarank_8/peptide_main_orpt_h1
+    checkpoint_template: "{run_dir}/checkpoints/ORPT-{milestone}"
+
   # Unlike the current main run's flat OptFormer checkpoints, lorarank_8's
   # are torchtune-nested (OptFormer-<m>/epoch_0/... has the actual
   # tokenizer/model files) -- confirmed by direct inspection, both 504
