@@ -29,6 +29,7 @@ def generate(
     task_set: str,
     out_dir: Path,
     reference_lines: list[tuple[str, str, float]] | None = None,  # (arm, label, final_bo_value)
+    exclude_arms: list[str] | None = None,
 ) -> Path | None:
     df = load_summary_incumbent(results_dirs)
     if df.empty:
@@ -36,6 +37,14 @@ def generate(
         return None
 
     sub = df[(df["milestone"] == milestone) & (df["task_set"] == task_set)]
+    if exclude_arms:
+        # Multiple internal arms can map to the same paper_arm() label (e.g.
+        # ORPT-MI and ORPT-H1 both collapse to "ORPT") -- groupby("arm")
+        # below groups on the raw column, so combining results_dirs that
+        # contain both at the same milestone would draw two identically
+        # colored/labeled "ORPT-<m>" lines on top of each other. Drop
+        # whichever variant this call isn't about before that groupby runs.
+        sub = sub[~sub["arm"].isin(exclude_arms)]
     if sub.empty:
         print(f"[eval2.fewshot] milestone={milestone} task_set={task_set}: no rows, skipping")
         return None
