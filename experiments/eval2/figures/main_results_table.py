@@ -29,17 +29,24 @@ from .main_bo import _available_task_ids
 # MTBO/OptFormer are stuck at 900 (their only available checkpoint -- 378/630
 # data does not exist for these two arms) would selectively hide that
 # convergence. POGPE/SGPE use n_experts=20; STBO has no milestone axis at all.
-ROW_SPECS: list[tuple[str, int, str, str]] = [
-    ("BOLT", 630, "bolt", "BOLT-630"),
-    ("BOLT", 900, "bolt", "BOLT-900"),
-    ("ORPT-MI", 630, "orpt", "ORPT-630"),
-    ("ORPT-MI", 900, "orpt", "ORPT-900"),
-    ("STBO", 0, "bolt", "STBO"),
-    ("MTBO", 900, "bolt", "MTBO"),
-    ("POGPE", 20, "bolt", "POGPE"),
-    ("SGPE", 20, "bolt", "SGPE"),
-    ("OptFormer", 900, "bolt", "OptFormer"),
-]
+def _row_specs(orpt_arm: str = "ORPT-MI") -> list[tuple[str, int, str, str]]:
+    return [
+        ("BOLT", 630, "bolt", "BOLT-630"),
+        ("BOLT", 900, "bolt", "BOLT-900"),
+        (orpt_arm, 630, "orpt", "ORPT-630"),
+        (orpt_arm, 900, "orpt", "ORPT-900"),
+        ("STBO", 0, "bolt", "STBO"),
+        ("MTBO", 900, "bolt", "MTBO"),
+        ("POGPE", 20, "bolt", "POGPE"),
+        ("SGPE", 20, "bolt", "SGPE"),
+        ("OptFormer", 900, "bolt", "OptFormer"),
+    ]
+
+
+# Kept as a module-level constant too (ORPT-MI, the original arm) since
+# nothing outside this module references ROW_SPECS directly today, but a
+# future caller doing so should still see the same default as before.
+ROW_SPECS: list[tuple[str, int, str, str]] = _row_specs()
 # LLAMBO has no raw/BO data anywhere under runs/lorarank_8 (never run in this
 # sweep) -- included as an unfilled row so the table shape still matches
 # tab:main-results, per that table's own "dashes are unfilled placeholders"
@@ -70,10 +77,11 @@ def _per_task_endpoints(cfg, work_dir: Path, task_ids, oracle_budget: int) -> tu
     return inits, finals
 
 
-def build_rows(cfg, bolt_run_dir: Path, orpt_run_dir: Path, task_set: str, pool_size: int) -> list[dict]:
+def build_rows(cfg, bolt_run_dir: Path, orpt_run_dir: Path, task_set: str, pool_size: int,
+               orpt_arm: str = "ORPT-MI") -> list[dict]:
     run_dirs = {"bolt": bolt_run_dir, "orpt": orpt_run_dir}
     rows: list[dict] = []
-    for arm, milestone, run_dir_key, label in ROW_SPECS:
+    for arm, milestone, run_dir_key, label in _row_specs(orpt_arm):
         run_dir = run_dirs[run_dir_key]
         work_dir, task_ids = _available_task_ids(cfg, run_dir, task_set, arm, milestone, pool_size)
         if not task_ids:
@@ -128,10 +136,11 @@ def generate(
     task_set: str,
     out_dir: Path,
     target_pool_size: int | None = None,
+    orpt_arm: str = "ORPT-MI",
 ) -> Path | None:
     cfg = peptide.load_config(str(config_path))
     pool_size = target_pool_size if target_pool_size is not None else cfg.init_size
-    rows = build_rows(cfg, bolt_run_dir, orpt_run_dir, task_set, pool_size)
+    rows = build_rows(cfg, bolt_run_dir, orpt_run_dir, task_set, pool_size, orpt_arm=orpt_arm)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     name = f"main_results_table_{DOMAIN_SLUG}"
