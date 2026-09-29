@@ -18,7 +18,7 @@
 #
 # COST WARNING: step 3 is (BOLT+ORPT-H1+OptFormer+MTBO) x 7 milestones x N
 # tasks + (POGPE+SGPE) x 3 expert-counts x N tasks + (STBO+LLAMBO) x N tasks,
-# each one a real BO run to the full oracle budget -- likely multiple days of
+# each one a real BO run to the full ora    cle budget -- likely multiple days of
 # wall clock even 8-way parallel. Sanity-check on a slice FIRST (see the
 # commented-out smoke command under step 3), and check step 2's cheap
 # coverage_rate_at_n_proposals output before committing: whether every arm
