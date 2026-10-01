@@ -1,0 +1,45 @@
+# mol domain main experiment -- BOLT-only arm (plain SFT, no DPO). Same
+# schedule/scale as mol_main_orpt_h1.yaml (must match for the BOLT-vs-ORPT
+# comparison to be apples-to-apples, same requirement as peptide's own
+# peptide_main_bolt.yaml/lorarank_8_orpt_h1.yaml pairing): oracle_budget=
+# 20000, init_size=1000, bsz=50, sft_epochs=5, milestones
+# [126, 252, 378, 504, 630, 756, 900]. Own experiment_id/run_dir --
+# independent trajectory chain from task 0 (this arm's own BOLT-<m>
+# checkpoints are never touched by the ORPT arm's chain, and vice versa).
+#
+# GPU slice: dedicated 4-GPU slice (0-3), distinct from mol_main_orpt_h1.yaml's
+# (4-7) -- see experiments/eval2/pipelines/run_train.sh's own header for why
+# this split matters (two configs each silently claiming "all 8" would
+# contend for the same physical GPUs when launched concurrently).
+# mi_parallel_gpus distributes SFT training (steps.py::distributed_finetune_launch)
+# across all 4; cuda_visible_devices pins the per-task BO trajectory itself
+# (mol_build_mutation_init/mol_sample_and_build_init + mol_run_bo, called
+# directly from trajectory_chain.py's main loop, never through
+# mi_parallel_gpus) -- by far the dominant cost of this arm (900 single-GPU
+# BO trajectories vs. 7 periodic SFT bursts), same reasoning as peptide's
+# own peptide_main_bolt.yaml comment. Check nvidia-smi fresh before
+# launching -- do not assume these ids are still free.
+experiment_id: mol_main_bolt
+milestones: [126, 252, 378, 504, 630, 756, 900]
+oracle_budget: 20000
+init_size: 1000
+bsz: 50
+sft_epochs: 5
+build_orpt: false
+mi_parallel_gpus: ["0", "1", "2", "3"]
+cuda_visible_devices: "0"
+
+# batch_size=64/device (global batch 256 on this arm's 4 GPUs) -- see
+# fine-tuning/mol/torchtune_config/qwen_2_5_3B_lora_bsz64.yaml's own header
+# comment for the full rationale/risk flag (8x peptide's own global batch,
+# no LR rescale). Per explicit instruction, not a peptide-mirrored value.
+torchtune_config: qwen_2_5_3B_lora_bsz64.yaml
+
+# Candidate-generation CPU sub-pool (optimization/mol/mol_generation_pool.py):
+# splits each BO step's n_candidates=200 generate-and-filter call across 4
+# persistent CPU worker processes per task (created once per task, reused
+# across all its BO steps). Real profiling (2026-09-30) confirmed generation
+# cost scales ~linearly with n_candidates and CPU headroom is enormous
+# (~212/224 cores idle) -- see mol_experiment/warm_task_pool.py's own
+# docstring for the task-level parallelism this stacks on top of.
+generation_workers: 4

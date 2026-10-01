@@ -1,0 +1,22 @@
+# First full end-to-end trajectory_chain run for the mol domain: exercises
+# mol_build_mutation_init + mol_run_bo (already verified) AND, for the first
+# time, the real `tune run` SFT (train_milestone) and DPO (train_orpt_milestone)
+# subprocess launches -- the one piece of mol_experiment/{orpt,trajectory_chain}.py
+# not yet exercised against real GPU training. Smoke-scale on purpose (mirrors
+# mol_smoke.yaml's own oracle_budget/init_size/bsz), single GPU, small
+# mi_orpt knobs to bound one-step-BO compute during pair construction.
+experiment_id: mol_smoke_orpt
+milestones: [5, 10]
+oracle_budget: 50
+init_size: 20
+bsz: 5
+sft_epochs: 1
+cuda_visible_devices: "0"
+build_orpt: true
+orpt_epochs: 1
+mi_num_backgrounds: 8        # kept at the real method's default -- needed for real statistical power (z-filter)
+mi_background_size: 20       # explicit, decoupled from init_size -- see MI_ORPT_PAIR_YIELD_TUNING.md (U_1 dilution)
+mi_z_min: 1.0                # relaxed from the class default 1.96 -- matches peptide's own validated production value; see MI_ORPT_PAIR_YIELD_TUNING.md
+mi_max_candidates_per_task: 12   # raised from 4 -- confirmed (real run) to fix the collapsed yield; see MI_ORPT_PAIR_YIELD_TUNING.md
+mi_target_pairs_per_task: 5     # matches the class default -- no longer needs suppressing now that yield isn't collapsing
+mi_max_tasks_per_milestone: 5   # bounds pair-construction cost at milestone 10 (only matters there; milestone 5 has 5 tasks anyway)

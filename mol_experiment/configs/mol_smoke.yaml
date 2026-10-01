@@ -1,0 +1,6 @@
+experiment_id: mol_smoke
+milestones: [5, 10]
+oracle_budget: 50
+init_size: 20
+bsz: 5
+sft_epochs: 1

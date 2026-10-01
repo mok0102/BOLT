@@ -1,0 +1,17 @@
+{
+  "min_vocab_ok_ligands_threshold": 10,
+  "max_target_seq_len_threshold": 1000,
+  "eligible_by_ligand_count_only": 2828,
+  "eligible_targets_before_split": 2436,
+  "sequence_groups_among_eligible": 2426,
+  "multi_member_sequence_groups": 10,
+  "split_random_seed": 0,
+  "n_train_targets_achieved": 900,
+  "n_heldout_targets_achieved": 50,
+  "locked_rule_top_fraction_excluded": 0.2,
+  "locked_rule_rank_quantile": 0.5,
+  "seed_vae_roundtrip_failures": 0,
+  "seed_to_best_headroom_p_min": 0.0,
+  "seed_to_best_headroom_p_median": 2.118475,
+  "seed_to_best_headroom_p_max": 8.40654
+}

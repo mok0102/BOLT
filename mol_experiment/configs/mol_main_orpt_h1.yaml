@@ -1,0 +1,115 @@
+# mol domain main experiment -- BindingDB paper-scale ORPT (matched-intervention).
+# Schedule/scale mirrors peptide's own current production config
+# (peptide_experiment/configs/lorarank_8_orpt_h1.yaml) field-for-field:
+# oracle_budget=20000, init_size=1000, bsz=50, sft_epochs=5, milestones
+# [126, 252, 378, 504, 630, 756, 900], mi_* BO-utility settings, and
+# orpt_beta/orpt_lr. The mi_* pair-construction values (mi_num_backgrounds=8,
+# mi_background_size=20, mi_z_min=1.0, mi_target_pairs_per_task=30,
+# mi_max_candidates_per_task=24) were independently confirmed to transfer to
+# mol's own pair-construction statistics before adopting them here (byte-
+# identical algorithm; see mol_experiment/MI_ORPT_PAIR_YIELD_TUNING.md for
+# the retroactive-data and live-rerun evidence) -- not copied blindly. The
+# rest (orpt_beta/orpt_lr, mi_candidate_temperature/mi_candidate_pool_size,
+# no task-count cap) are copied as-is per explicit instruction to mirror
+# peptide's config directly; see the two caveats below for what that implies
+# for mol specifically.
+#
+# heldout: optimization/mol/mol_tasks.py's manifest has exactly one fixed
+# 50-task heldout split (N_HELDOUT_TASKS=50) -- unlike peptide's
+# heldout20/50/100 tiering, mol has nothing to choose between, so no
+# heldout_tasks_override is set here; MolExperimentConfig.heldout_tasks()
+# already returns all 50 by default.
+#
+# orpt_beta=0.25/orpt_lr=2e-5: peptide's own grid-search-confirmed values,
+# used here as-is per explicit instruction (not MolExperimentConfig's own
+# untuned class defaults of 0.1/3e-4). Flagging once, since no mol-side DPO
+# hyperparameter search has actually been run: these were tuned against
+# peptide's own DPO loss landscape, and whether they're also good for mol is
+# unverified, not confirmed transferable the way the mi_* values above were.
+#
+# Tractability caveat -- READ BEFORE LAUNCHING. Two costs stack here:
+#   1. Pair construction's one-step-BO calls (mi_orpt/one_step_evaluator.py)
+#      -- NOW parallelized across mi_parallel_gpus via mi_orpt/warm_pool.py
+#      (one persistent worker process per GPU, verified with a real
+#      multi-GPU run). At mi_max_candidates_per_task=24 * mi_num_backgrounds=8
+#      = 192 calls/task, measured ~2.5s/call serially (mol_smoke_orpt
+#      evidence) -> ~8 min/task serial, ~2 min/task across this config's
+#      4-GPU slice, ~1 min/task once expanded to 8 (see below).
+#   2. mi_candidate_temperature=1.5 (below) additionally samples a dedicated
+#      ~645-candidate pool (min_bank_size_needed(20,24)*15) per task per
+#      milestone via mol_sample_and_build_init -- real LLM generation +
+#      real oracle scoring. This one is STILL serial/in-process
+#      (mol_experiment/orpt.py's own module docstring: no warm-sampling-pool
+#      equivalent for mol yet, unlike cost 1 above), also not yet benchmarked
+#      at this checkpoint scale. peptide's own analogous plateau note
+#      (eval_raw_temperature's comment: median ~305/1000 unique+feasible
+#      candidates found even after 5 retries at milestone 900) suggests mol
+#      should expect a similar shortfall, not a clean fill to pool_size, but
+#      the wall-clock cost of those retries is real regardless of yield.
+# With mi_max_tasks_per_milestone unset (mirroring peptide's own current
+# choice -- every task in [0, milestone) is used, same as BOLT-<m>'s SFT
+# dataset), both costs apply to the FULL task count at every milestone (sum
+# of [126..900] = 3546 task-constructions) -- roughly ~5 days for cost 1
+# alone at 4-way parallelism (~2.5 days once mol_main_bolt.yaml's chain
+# finishes and this arm's mi_parallel_gpus is manually expanded to all 8,
+# see the plan discussed when this run was launched), plus cost 2's
+# still-unparallelized, still-unbenchmarked addition on top. Strongly
+# recommend watching the first milestone's actual wall-clock once it's
+# reached, rather than assuming this estimate holds for the full schedule.
+experiment_id: mol_main_orpt_h1
+milestones: [126, 252, 378, 504, 630, 756, 900]
+oracle_budget: 20000
+init_size: 1000
+bsz: 50
+sft_epochs: 5
+
+# GPU slice: dedicated 4-GPU slice (4-7), distinct from mol_main_bolt.yaml's
+# (0-3) -- run_train.sh-style split so the two arms never contend for the
+# same physical GPU when launched concurrently. mi_parallel_gpus distributes
+# SFT/DPO training and build_pairs.py's reference-model scoring across all
+# 4; cuda_visible_devices pins the one-step-BO calls during pair
+# construction (mi_orpt/one_step_evaluator.py -- always serial, in-process,
+# never through mi_parallel_gpus, see the tractability caveat above) and
+# mol_sample_and_build_init's dedicated-pool LLM sampling. Check nvidia-smi
+# fresh before launching -- do not assume these ids are still free.
+mi_parallel_gpus: ["4", "5", "6", "7"]
+cuda_visible_devices: "4"
+
+build_orpt: true
+orpt_epochs: 1
+orpt_beta: 0.25
+orpt_lr: 2.0e-5
+orpt_pair_source: matched_intervention
+mi_num_backgrounds: 8
+mi_background_size: 20
+mi_tau_q: 1.0
+mi_z_min: 1.0
+mi_delta_t: 0.0
+mi_target_pairs_per_task: 30
+mi_max_candidates_per_task: 24
+mi_bo_steps: 1
+# mi_require_h0 left at its default (true) -- this is the H0-AND-H1 arm, matching peptide's.
+mi_candidate_temperature: 1.5
+mi_candidate_pool_size: 2000
+# mi_max_tasks_per_milestone intentionally unset -- mirrors peptide's own
+# current choice (uncapped, every task in [0, milestone) used). See the
+# tractability caveat above: this is the single biggest cost lever for mol
+# specifically, since mol has no parallel one-step-BO pool the way peptide's
+# uncapped choice relied on.
+
+# batch_size=64/device for both the SFT (BOLT-<m>) and DPO (ORPT-<m>) stages
+# (global batch 256 on this arm's 4 GPUs) -- see fine-tuning/mol/torchtune_config/
+# qwen_2_5_3B_lora_bsz64.yaml's own header comment for the full rationale/risk
+# flag (8x peptide's own global batch, no LR rescale). Per explicit
+# instruction, not a peptide-mirrored value.
+torchtune_config: qwen_2_5_3B_lora_bsz64.yaml
+orpt_torchtune_config: qwen_2_5_3B_lora_dpo_bsz64.yaml
+
+# Candidate-generation CPU sub-pool (optimization/mol/mol_generation_pool.py):
+# splits each BO step's n_candidates=200 generate-and-filter call across 4
+# persistent CPU worker processes per task (created once per task, reused
+# across all its BO steps). Real profiling (2026-09-30) confirmed generation
+# cost scales ~linearly with n_candidates and CPU headroom is enormous
+# (~212/224 cores idle) -- see mol_experiment/warm_task_pool.py's own
+# docstring for the task-level parallelism this stacks on top of.
+generation_workers: 4
