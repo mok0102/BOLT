@@ -1,0 +1,53 @@
+\subsection{Synthetic Function: Experimental Setup}
+\label{sec:synthetic-setup}
+
+\paragraph{Task family and split.}
+We study a two-dimensional, task-parameterized Branin function.  For
+$x=(x_1,x_2)\in[-5,10]\times[0,15]$ and task parameter $t\in[0,1]$, the
+minimization objective is
+\begin{equation}
+ f_t(x)=\left(x_2-\frac{5.1}{4\pi^2}x_1^2+\frac{5}{\pi}x_1-6\right)^2
+       +10(1-t)\cos(x_1)+10.
+\end{equation}
+The optimizer receives the score $y_t(x)=-f_t(x)$, so larger scores are
+better.  We use 50 training tasks with
+$t_i=0.005+0.02i$ for $i=0,\ldots,49$ and 20 held-out tasks with
+$t_j=0.05j$ for $j=0,\ldots,19$.  Thus the held-out task parameters
+interleave with, rather than duplicate, the training parameters.  The
+optimum is $f_t^\star=10t$, which permits exact simple-regret evaluation.
+
+\paragraph{Sequential optimization and model training.}
+At each held-out task, an arm starts with five initial points and then
+makes 50 additional, sequential oracle calls.  The standard BO loop fits
+an RBF-kernel GP to the observations and maximizes a GP-UCB acquisition
+function over 128 uniformly sampled candidate points per call.  Coordinates
+are scaled to the unit box before GP fitting; the kernel lengthscale is
+$0.2$ and the UCB exploration coefficient is $2.0$.  The BOLT and ORPT
+proposal models are initialized from Qwen2.5-3B-Instruct.  At training
+milestones $m\in\{2,5,10,20,30,40,50\}$, BOLT fine-tunes on the 20
+highest-scoring observed points from each of the first $m$ training tasks,
+using five SFT epochs.  ORPT applies one DPO epoch to the corresponding
+BOLT checkpoint.  BOLT and ORPT use separate training-trajectory chains;
+their held-out evaluations use the same task parameters and BO budget.
+
+\paragraph{Matched-intervention preferences.}
+For each training task at a milestone, we reserve at most 30 candidate
+initial points from its observed trajectory.  We sample three shared
+background pools of four points each from the remaining observed points,
+with probabilities proportional to the reference model likelihood at
+temperature $1$.  Each candidate is inserted into each background and
+followed by $H$ BO acquisition steps. The figures reported here use
+the completed $H=1$ run; separate $H=2$ and $H=3$ configurations test
+longer horizons.  The candidate utility is the best score among the
+inserted candidate and the points acquired in those $H$ steps; the shared
+background points condition the BO trajectory but do not enter this
+utility.  Matched candidate differences are evaluated with the same
+backgrounds and random seeds.  We retain up to 30 preference pairs per
+task with an absolute paired $z$-score of at least $1$, requiring the
+preferred candidate's own observed score to exceed the rejected
+candidate's score.  Preference construction uses a separate GP acquisition
+configuration: 512 uniformly sampled candidates, lengthscale $0.05$, and
+UCB coefficient $0$.
+
+\paragraph{Baselines.}
+We compare against STBO, POGPE, OptFormer, and LLAMBO.

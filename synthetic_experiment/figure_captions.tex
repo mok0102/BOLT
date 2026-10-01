@@ -1,0 +1,9 @@
+% Requires \usepackage{graphicx}; adjust paths to the paper's working directory.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.32\textwidth]{synthetic_experiment/eval2/results/synthetic/stbo_bolt_orpt_final_score.pdf}\hfill
+  \includegraphics[width=0.32\textwidth]{synthetic_experiment/eval2/results/synthetic/stbo_bolt_orpt_by_milestone.pdf}\hfill
+  \includegraphics[width=0.32\textwidth]{synthetic_experiment/eval2/results/synthetic/stbo_bolt_orpt_initialization_best.pdf}
+  \caption{Synthetic Branin results across training milestones: (a) best score after 50 BO calls (higher is better), (b) final simple regret (lower is better), and (c) best score in the five-point initialization pool (higher is better). Curves average 20 held-out tasks; error bars in (b) show standard errors. ORPT uses $H=1$, and (c) uses a broken vertical axis.}
+  \label{fig:synthetic-results}
+\end{figure*}

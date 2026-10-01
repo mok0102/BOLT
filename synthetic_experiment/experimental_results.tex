@@ -1,0 +1,30 @@
+\subsection{Synthetic Branin Results}
+\label{sec:synthetic-results}
+
+Figure~\ref{fig:synthetic-results} compares STBO, BOLT, and the
+available one-step ORPT run ($H=1$) across training milestones. Each point is the mean over the same 20 held-out tasks;
+the error bars in the regret figure show standard errors. STBO has no
+milestone-dependent training stage, so its curve is constant.
+
+\paragraph{Initialization quality.}
+The learned initializers substantially improve the best score in the
+five-point initialization pool relative to STBO. At milestone 50, the mean
+best initialization scores are $-11.607$ for STBO, $-4.781$ for BOLT,
+and $-4.754$ for ORPT. ORPT generally yields a better initialization than
+BOLT from milestone 5 onward, with a small reversal at milestone 10. The
+initialization-score figure uses a broken vertical axis to show both the
+large STBO gap and the smaller BOLT--ORPT differences without altering the
+underlying values.
+
+\paragraph{Outcome after BO.}
+After 50 additional oracle calls, all three methods approach the mean
+optimal score of $-4.750$ for this held-out task set. At milestone 50,
+ORPT reaches a mean best score of $-4.7537$, compared with $-4.7578$ for
+BOLT and $-4.7645$ for STBO. The corresponding mean simple regrets are
+$0.0037$, $0.0078$, and $0.0145$, respectively. ORPT has lower mean final
+regret than BOLT at every milestone from 5 through 50; at milestone 2,
+the two methods are nearly tied and BOLT is slightly lower. These trends
+suggest that improving the initial pool can continue to benefit the
+subsequent BO trajectory, even when all methods use the same 50-call BO
+budget. The figure shows descriptive means and standard errors; no
+statistical significance claim is made from these plots alone.

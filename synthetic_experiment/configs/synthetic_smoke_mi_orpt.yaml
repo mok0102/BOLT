@@ -1,0 +1,28 @@
+experiment_id: synthetic_smoke_mi_orpt_10train_1heldout_sft5_mi5_v1
+milestones: [2, 4, 6, 8, 10]
+num_train_tasks: 10
+num_heldout_tasks: 1
+
+train_task_t_override: [0.005, 0.015, 0.025, 0.035, 0.045, 0.055, 0.065, 0.075, 0.085, 0.095]
+heldout_task_t_override: [0.05]
+oracle_budget: 500
+init_size: 5
+bsz: 1
+bo_candidate_pool_size: 128
+trajectory_parallel_workers: 2
+proposal_source: llm
+cuda_visible_devices: "5,6"
+sft_top_n_per_task: 100
+sft_epochs: 5
+build_orpt: true
+orpt_epochs: 1
+# mi_pool_size: 5
+mi_max_candidates_per_task: 6
+mi_num_backgrounds: 5
+mi_target_pairs_per_task: 5
+mi_tau_q: 1.0
+mi_z_min: 0.0
+mi_delta_t: 0.0
+mi_utility_mode: acquired_score
+mi_parallel_workers: 8
+table_k_checkpoints: [1, 2, 4]
