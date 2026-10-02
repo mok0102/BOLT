@@ -14,7 +14,10 @@ from .mi_orpt.candidate_bank import build_eligible_bank
 from .mi_orpt.likelihood import score_sequences
 from .mi_orpt.pair_construction import construct_pairs_for_task
 from .prompts import messages
-from .steps import FINE_TUNING_DIR, _run, cleanup_intermediate_epochs
+from .steps import (
+    FINE_TUNING_DIR, _run, checkpoint_ready, cleanup_intermediate_epochs,
+    materialize_hf_checkpoint, torchrun_master_port, tune_executable,
+)
 from .task_splits import task_name
 
 
@@ -115,28 +118,30 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int) -> Path:
 
 def train_orpt_milestone(cfg: ExperimentConfig, milestone: int) -> Path:
     final = cfg.orpt_checkpoint_dir(milestone)
-    if final.exists():
+    if checkpoint_ready(final):
         return final
     bolt = cfg.milestone_checkpoint_dir(milestone)
-    if not bolt.exists():
+    if not checkpoint_ready(bolt):
         raise RuntimeError(f"Missing BOLT checkpoint: {bolt}")
     pairs = build_orpt_pairs(cfg, milestone)
     if cfg.proposal_source == "random":
-        final.mkdir(parents=True)
+        final.mkdir(parents=True, exist_ok=True)
         (final / "RANDOM_PROPOSAL_MARKER").write_text(f"pairs={pairs}\n")
         return final
     directory = cfg.bolt_root / FINE_TUNING_DIR
     recipe = directory / "torchtune_config" / cfg.orpt_torchtune_config
     check_training_size(pairs, recipe, cfg.orpt_epochs)
     out = cfg.checkpoints_dir / f"ORPT-{milestone}"
-    _run(["tune", "run", "--nnodes", "1", "--nproc_per_node", "1", cfg.orpt_torchtune_recipe,
+    _run([tune_executable(), "run", "--nnodes", "1", "--nproc_per_node", "1",
+          "--master-port", str(torchrun_master_port(cfg)), cfg.orpt_torchtune_recipe,
           "--config", f"torchtune_config/{cfg.orpt_torchtune_config}", f"output_dir={out}",
           f"dataset.data_files={pairs}", f"checkpointer.checkpoint_dir={bolt}",
           f"tokenizer.path={cfg.base_checkpoint_dir}/vocab.json",
           f"tokenizer.merges_file={cfg.base_checkpoint_dir}/merges.txt", f"epochs={cfg.orpt_epochs}",
           f"loss.beta={cfg.orpt_beta}", f"optimizer.lr={cfg.orpt_lr}", "seed=42",
           f"metric_logger.log_dir={cfg.tensorboard_dir / f'ORPT-{milestone}'}"], directory, cfg)
-    if not final.exists():
+    materialize_hf_checkpoint(out, cfg.orpt_epochs - 1, cfg.base_checkpoint_dir)
+    if not checkpoint_ready(final):
         raise RuntimeError(f"DPO did not produce {final}")
-    cleanup_intermediate_epochs(out, final)
+    cleanup_intermediate_epochs(out, cfg.orpt_epochs - 1)
     return final

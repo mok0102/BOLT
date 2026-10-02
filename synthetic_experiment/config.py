@@ -156,19 +156,24 @@ class ExperimentConfig:
     tensorboard_dir = property(lambda self: self.run_dir / "tensorboard")
 
     def milestone_checkpoint_dir(self, milestone: int) -> Path:
-        return self.checkpoints_dir / f"BOLT-{milestone}" / f"epoch_{self.sft_epochs - 1}"
+        # Flat -- matches where `tune run`'s own `output_dir=` points, and
+        # the directory `steps.py::materialize_hf_checkpoint` flattens a
+        # finished checkpoint into in place (see that function's docstring
+        # for why the previous `/ f"epoch_{self.sft_epochs - 1}"` suffix
+        # didn't match this torchtune install's real output layout).
+        return self.checkpoints_dir / f"BOLT-{milestone}"
 
     def mtbo_checkpoint(self, milestone: int) -> Path:
         return self.checkpoints_dir / f"MTBO-{milestone}" / "surrogate.npz"
 
     def optformer_checkpoint_dir(self, milestone: int) -> Path:
-        return self.checkpoints_dir / f"OptFormer-{milestone}" / f"epoch_{self.optformer_epochs - 1}"
+        return self.checkpoints_dir / f"OptFormer-{milestone}"
 
     def gp_expert_dir(self, milestone: int) -> Path:
         return self.run_dir / "gp_experts" / f"milestone_{milestone}"
 
     def orpt_checkpoint_dir(self, milestone: int) -> Path:
-        return self.checkpoints_dir / f"ORPT-{milestone}" / f"epoch_{self.orpt_epochs - 1}"
+        return self.checkpoints_dir / f"ORPT-{milestone}"
 
     def ensure_dirs(self) -> None:
         for path in (self.trajectories_dir, self.checkpoints_dir, self.milestones_dir, self.aggregate_dir):

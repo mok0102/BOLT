@@ -14,10 +14,14 @@ from .steps import (
     FINE_TUNING_DIR,
     _load_hf_model,
     _run,
+    checkpoint_ready,
     cleanup_intermediate_epochs,
+    materialize_hf_checkpoint,
     run_bo,
     sample_from_checkpoint,
     sampling_output_path,
+    torchrun_master_port,
+    tune_executable,
 )
 from .task_splits import task_name
 
@@ -46,26 +50,28 @@ def build_sft_data(cfg: ExperimentConfig, milestone: int) -> Path:
 
 def train_milestone(cfg: ExperimentConfig, milestone: int) -> Path:
     final = cfg.milestone_checkpoint_dir(milestone)
-    if final.exists():
+    if checkpoint_ready(final):
         return final
     data = build_sft_data(cfg, milestone)
     if cfg.proposal_source == "random":
-        final.mkdir(parents=True)
+        final.mkdir(parents=True, exist_ok=True)
         (final / "RANDOM_PROPOSAL_MARKER").write_text(f"sft_data={data}\n")
         return final
     from .orpt import check_training_size
     directory = cfg.bolt_root / FINE_TUNING_DIR
     check_training_size(data, directory / "torchtune_config" / cfg.torchtune_config, cfg.sft_epochs)
     out = cfg.checkpoints_dir / f"BOLT-{milestone}"
-    _run(["tune", "run", "--nnodes", "1", "--nproc_per_node", "1", cfg.torchtune_recipe,
+    _run([tune_executable(), "run", "--nnodes", "1", "--nproc_per_node", "1",
+          "--master-port", str(torchrun_master_port(cfg)), cfg.torchtune_recipe,
           "--config", f"torchtune_config/{cfg.torchtune_config}", f"output_dir={out}",
           f"dataset.data_files={data}", f"checkpointer.checkpoint_dir={cfg.base_checkpoint_dir}",
           f"tokenizer.path={cfg.base_checkpoint_dir}/vocab.json",
           f"tokenizer.merges_file={cfg.base_checkpoint_dir}/merges.txt", f"epochs={cfg.sft_epochs}",
           "seed=42", f"metric_logger.log_dir={cfg.tensorboard_dir / f'BOLT-{milestone}'}"], directory, cfg)
-    if not final.exists():
+    materialize_hf_checkpoint(out, cfg.sft_epochs - 1, cfg.base_checkpoint_dir)
+    if not checkpoint_ready(final):
         raise RuntimeError(f"SFT did not produce {final}")
-    cleanup_intermediate_epochs(out, final)
+    cleanup_intermediate_epochs(out, cfg.sft_epochs - 1)
     return final
 
 

@@ -10,7 +10,11 @@ import pandas as pd
 from .branin import BraninTask
 from .config import ExperimentConfig
 from .prompts import SYSTEM_PROMPT, format_task_t, parse_point, point_text
-from .steps import FINE_TUNING_DIR, _load_hf_model, _run, _uniform_points, cleanup_intermediate_epochs, write_trajectory
+from .steps import (
+    FINE_TUNING_DIR, _load_hf_model, _run, _uniform_points, checkpoint_ready,
+    cleanup_intermediate_epochs, materialize_hf_checkpoint, torchrun_master_port,
+    tune_executable, write_trajectory,
+)
 from .task_splits import task_name
 
 
@@ -28,7 +32,7 @@ def train_optformer(cfg: ExperimentConfig, milestone: int) -> Path:
     if milestone not in cfg.milestones:
         raise ValueError(f"unknown milestone {milestone}")
     final = cfg.optformer_checkpoint_dir(milestone)
-    if final.exists():
+    if checkpoint_ready(final):
         return final
     source_frames = []
     for index in range(milestone):
@@ -62,16 +66,18 @@ def train_optformer(cfg: ExperimentConfig, milestone: int) -> Path:
     directory = cfg.bolt_root / FINE_TUNING_DIR
     check_training_size(data_path, directory / 'torchtune_config' / cfg.torchtune_config, cfg.optformer_epochs)
     out = cfg.checkpoints_dir / f'OptFormer-{milestone}'
-    _run(['tune', 'run', '--nnodes', '1', '--nproc_per_node', '1', cfg.torchtune_recipe,
+    _run([tune_executable(), 'run', '--nnodes', '1', '--nproc_per_node', '1',
+          '--master-port', str(torchrun_master_port(cfg)), cfg.torchtune_recipe,
           '--config', f'torchtune_config/{cfg.torchtune_config}', f'output_dir={out}',
           f'dataset.data_files={data_path}', f'checkpointer.checkpoint_dir={cfg.base_checkpoint_dir}',
           f'tokenizer.path={cfg.base_checkpoint_dir}/vocab.json',
           f'tokenizer.merges_file={cfg.base_checkpoint_dir}/merges.txt',
           f'epochs={cfg.optformer_epochs}', 'seed=42',
           f'metric_logger.log_dir={cfg.tensorboard_dir / f"OptFormer-{milestone}"}'], directory, cfg)
-    if not final.exists():
+    materialize_hf_checkpoint(out, cfg.optformer_epochs - 1, cfg.base_checkpoint_dir)
+    if not checkpoint_ready(final):
         raise RuntimeError(f'OptFormer checkpoint not produced: {final}')
-    cleanup_intermediate_epochs(out, final)
+    cleanup_intermediate_epochs(out, cfg.optformer_epochs - 1)
     return final
 
 

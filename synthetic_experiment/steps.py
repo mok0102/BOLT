@@ -19,6 +19,43 @@ from .prompts import messages, parse_point
 FINE_TUNING_DIR = "fine-tuning/query_plans"
 
 
+def tune_executable() -> str:
+    """torchtune's `tune` CLI, resolved next to the running interpreter, never
+    from PATH. This machine (see mol_experiment/ENVIRONMENT.md) has more than
+    one venv that ships a `tune` binary with a different torch/torchtune
+    build; a bare "tune" in argv resolves through PATH and can silently train
+    through the wrong environment. sys.prefix, not Path(sys.executable).resolve()
+    -- the latter follows a uv venv's symlink straight out of the venv."""
+    import sys
+    candidate = Path(sys.prefix) / "bin" / "tune"
+    if not candidate.exists():
+        raise RuntimeError(
+            f"torchtune's `tune` CLI not found at {candidate} (sys.prefix={sys.prefix}). "
+            "Launch synthetic_experiment with the interpreter of the venv that has it."
+        )
+    return str(candidate)
+
+
+def torchrun_master_port(cfg: ExperimentConfig) -> int:
+    """29500 + first visible GPU id, so concurrent trajectory_chain processes
+    on different GPUs don't collide on torchrun's rendezvous port.
+
+    Confirmed live (2026-10-02): two `tune run --nnodes 1 --nproc_per_node 1`
+    launches started concurrently (one per trajectory_chain process, each
+    pinned to its own GPU pair via CUDA_VISIBLE_DEVICES) both tried to bind
+    torchrun's default rendezvous port 29500 and one died with
+    `RuntimeError: ... EADDRINUSE`. The port is a host-wide TCP resource, not
+    scoped per GPU, so CUDA_VISIBLE_DEVICES isolation alone does not prevent
+    the collision. Mirrors peptide_experiment/mol_experiment's own
+    `master_port = 29500 + int(cfg.mi_parallel_gpus[0])` fix for the identical
+    failure mode there.
+    """
+    if not cfg.cuda_visible_devices:
+        return 29500
+    first_gpu = cfg.cuda_visible_devices.split(",")[0].strip()
+    return 29500 + int(first_gpu)
+
+
 def _run(cmd: list, cwd: Path, cfg: ExperimentConfig | None = None) -> None:
     print(f"+ ({cwd}) {' '.join(map(str, cmd))}", flush=True)
     env = {**os.environ, "PAGER": "cat", "MANPAGER": "cat", "GIT_PAGER": "cat"}
@@ -27,10 +64,127 @@ def _run(cmd: list, cwd: Path, cfg: ExperimentConfig | None = None) -> None:
     subprocess.run([str(x) for x in cmd], cwd=cwd, check=True, env=env, stdin=subprocess.DEVNULL)
 
 
-def cleanup_intermediate_epochs(root: Path, keep: Path) -> None:
-    for path in root.glob("epoch_*"):
-        if path.is_dir() and path != keep:
-            shutil.rmtree(path)
+def materialize_hf_checkpoint(ckpt_dir: Path, epoch: int, base_checkpoint_dir: Path) -> Path:
+    """Reconcile torchtune's actual LoRA-SFT/DPO checkpoint output into a
+    loadable HF-format directory (``model.safetensors.index.json`` +
+    tokenizer files), regardless of which on-disk layout this torchtune
+    version used.
+
+    Added 2026-10-02 after a reproducible, deterministic crash: torchtune
+    0.4.0's FullModelHFCheckpointer logged "saved successfully" and wrote
+    flat, epoch-suffixed files (``hf_model_000N_{epoch}.pt``,
+    ``adapter_{epoch}.pt``) directly in ``output_dir`` -- not the nested
+    ``epoch_{N}/`` subdirectory this module's training functions checked
+    for. That happened identically across 4 independent concurrent
+    `tune run` invocations (same epoch, same files, same traceback),
+    ruling out a race condition -- it is a structural mismatch between this
+    torchtune install's real output convention and the path this package
+    assumed, not a flake.
+
+    Byte-identical port of peptide_experiment/steps.py::materialize_hf_checkpoint
+    (via mol_experiment's own byte-identical port, mol_experiment/
+    ENVIRONMENT.md) -- that domain hit and fixed the identical torchtune
+    0.4.0-vs-newer layout difference first; ported here rather than
+    re-derived, per the "reuse, don't reimplement" instruction in
+    impl_plan/motivational_exp.txt.
+    """
+    import torch
+
+    index_path = ckpt_dir / "model.safetensors.index.json"
+    if index_path.exists():
+        return ckpt_dir
+
+    epoch_dir = ckpt_dir / f"epoch_{epoch}"
+    if (epoch_dir / "model.safetensors.index.json").exists():
+        for item in list(epoch_dir.iterdir()):
+            is_stray_epoch_dir = item.is_dir() and item.name.startswith("epoch_") and item.name[len("epoch_"):].isdigit()
+            if item.is_dir() and (item.name == "recipe_state" or is_stray_epoch_dir):
+                shutil.rmtree(item)
+                continue
+            shutil.move(str(item), str(ckpt_dir / item.name))
+        epoch_dir.rmdir()
+        return ckpt_dir
+
+    from safetensors.torch import save_file
+
+    shards = sorted(ckpt_dir.glob(f"hf_model_*_{epoch}.pt"))
+    if not shards:
+        raise FileNotFoundError(
+            f"materialize_hf_checkpoint: no hf_model_*_{epoch}.pt shards in {ckpt_dir} "
+            "(expected torchtune's FullModelHFCheckpointer to have written them)"
+        )
+    num_shards = len(shards)
+    for cpt_idx, shard_path in enumerate(shards, start=1):
+        state_dict = torch.load(shard_path, map_location="cpu", weights_only=True)
+        seen_ptrs: dict[int, str] = {}
+        for key, tensor in state_dict.items():
+            ptr = tensor.data_ptr()
+            if ptr in seen_ptrs:
+                state_dict[key] = tensor.clone()
+            else:
+                seen_ptrs[ptr] = key
+        out_path = ckpt_dir / f"model-{cpt_idx:05d}-of-{num_shards:05d}.safetensors"
+        save_file(state_dict, out_path, metadata={"format": "pt"})
+
+    base_index = base_checkpoint_dir / "model.safetensors.index.json"
+    if not base_index.exists():
+        raise FileNotFoundError(
+            f"materialize_hf_checkpoint: base checkpoint has no model.safetensors.index.json at {base_index}"
+        )
+    shutil.copy2(base_index, index_path)
+
+    for tokenizer_file in ("vocab.json", "merges.txt", "tokenizer.json", "tokenizer_config.json"):
+        src = base_checkpoint_dir / tokenizer_file
+        dst = ckpt_dir / tokenizer_file
+        if src.exists() and not dst.exists():
+            shutil.copy2(src, dst)
+
+    return ckpt_dir
+
+
+def checkpoint_ready(ckpt_dir: Path) -> bool:
+    """True once ``ckpt_dir`` holds either a materialized HF checkpoint or a
+    ``proposal_source: random`` dummy-checkpoint marker. A bare
+    ``ckpt_dir.exists()`` is NOT a valid completion check: torchtune (or
+    ``_run``'s own subprocess) creates ``output_dir`` well before training
+    finishes, so an early-return keyed on mere directory existence would
+    treat an in-progress or previously-interrupted run as already done."""
+    return (ckpt_dir / "model.safetensors.index.json").exists() or (ckpt_dir / "RANDOM_PROPOSAL_MARKER").exists()
+
+
+def cleanup_intermediate_epochs(ckpt_dir: Path, final_epoch: int) -> None:
+    """Byte-identical port of peptide_experiment/steps.py::cleanup_intermediate_epochs
+    (via mol_experiment). Handles both this torchtune install's flat
+    ``hf_model_*_*.pt``/``adapter_*.pt`` files and the nested ``epoch_*/``
+    layout, deleting every non-final-epoch artifact once the checkpoint is
+    materialized -- replaces this module's own prior ``cleanup_intermediate_
+    epochs(root, keep: Path)``, which only ever globbed for ``epoch_*``
+    directories and so never cleaned up the flat-file layout this install
+    actually produces."""
+    materialized = (ckpt_dir / "model.safetensors.index.json").exists()
+    for pattern in ("hf_model_*_*.pt", "adapter_*.pt"):
+        for f in ckpt_dir.glob(pattern):
+            try:
+                epoch = int(f.stem.rsplit("_", 1)[-1])
+            except ValueError:
+                continue
+            if epoch != final_epoch or materialized:
+                f.unlink()
+    recipe_state = ckpt_dir / "recipe_state.pt"
+    if recipe_state.exists():
+        recipe_state.unlink()
+    for d in ckpt_dir.glob("epoch_*"):
+        if not d.is_dir():
+            continue
+        suffix = d.name[len("epoch_"):]
+        if not suffix.isdigit():
+            continue
+        epoch = int(suffix)
+        if epoch != final_epoch or materialized:
+            shutil.rmtree(d)
+    recipe_state_dir = ckpt_dir / "recipe_state"
+    if recipe_state_dir.is_dir():
+        shutil.rmtree(recipe_state_dir)
 
 
 def _uniform_points(rng: np.random.Generator, n: int) -> np.ndarray:
