@@ -1,3 +1,8 @@
+# Repo-root tarball archives of gitignored results/logs/runs data, made
+# before migrations that would otherwise leave that data unrecoverable
+# (e.g. branin_scalar_t_20261002.tgz) -- derived data, not source.
+/archive/*.tgz
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

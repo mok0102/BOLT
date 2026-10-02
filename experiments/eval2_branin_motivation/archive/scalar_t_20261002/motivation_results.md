@@ -1,5 +1,16 @@
 # Branin motivational experiments: results
 
+> **SUPERSEDED 2026-10-02.** This documents the *scalar-`t`* Branin task
+> family, since replaced by a diverse, affine-transform-based family: it was
+> numerically verified that this family's global optimum x-location is
+> independent of `t`, which let naive context-free reuse baselines
+> (Prior-best-reuse, Context-regression) score deceptively well — see
+> Experiment C below. Kept as the historical record of that finding, not as
+> current results. Source code at this state: git tag
+> `branin-scalar-t-final-20261002`. Full `results/`/`logs/` (gitignored, not
+> in git history) archived at `archive/branin_scalar_t_20261002.tgz`
+> (repo root). Current results live in `motivation_results.md` one level up.
+
 Source spec: `impl_plan/motivational_exp.txt`. Implementation plan and the
 fairness/confound decisions made before running anything:
 `IMPLEMENTATION_PLAN.md`. All numbers below are read directly from the saved
