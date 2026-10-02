@@ -1,0 +1,540 @@
+You are implementing paper-quality motivational experiments for the ORPT project.
+
+Before coding, inspect the existing repository carefully. In particular, reuse the current Branin task construction, BO implementation, train/test task splits, checkpoint definitions, baseline implementations, model checkpoints, seeds, and plotting conventions whenever they already exist. Do not silently reimplement an existing method differently.
+
+The experiments are intended for the Introduction / motivation of an ICML-level paper. Their purpose is not simply to show that ORPT wins. Each experiment must answer a specific scientific question and isolate the relevant factor.
+
+============================================================
+OVERALL SCIENTIFIC MOTIVATION
+============================================================
+
+ORPT studies learned initialization for repeated Bayesian optimization.
+
+We want three Branin motivational experiments:
+
+A. Where should cross-task knowledge enter BO?
+B. Does standalone point quality agree with downstream initialization quality?
+C. If we learn an initializer, what training signal should it optimize?
+
+These three experiments should form a coherent argument:
+
+A:
+Cross-task experience can be transferred through different interfaces
+(e.g., surrogate transfer vs. learned initialization).
+
+B:
+Even within learned initialization, a candidate that is good by its
+standalone objective value need not be the candidate that leads to a better
+downstream BO outcome.
+
+C:
+We therefore test whether training an initializer from downstream rollout
+outcomes is more appropriate than simpler learned-initialization objectives.
+
+Do NOT frame the entire experiment as "BOLT vs ORPT".
+BOLT / Top-K imitation is one relevant learned-initializer baseline.
+
+============================================================
+COMMON BRANIN SETUP
+============================================================
+
+First verify the repository implementation against the paper source.
+
+Expected current setup:
+- Related Branin tasks obtained by varying task parameter t.
+- 50 training tasks.
+- 20 fixed held-out test tasks.
+- Training-task checkpoints:
+    {2, 5, 10, 20, 30, 40, 50}
+- Downstream BO initialization size: 5 evaluated points.
+- Downstream BO budget: 50 additional oracle evaluations.
+- Existing ORPT synthetic preference construction:
+    m_pref = 5
+    M = 3 shared matched base sets
+- Existing main synthetic ORPT configuration uses H=1 unless overridden.
+
+Use exactly the existing train/test split and BO implementation unless there
+is a clear bug. Do not create a new favorable split.
+
+Because Branin is synthetic, compute an accurate global optimum f_t^* for
+EVERY held-out task.
+
+Do not assume the standard Branin optimum is unchanged when t changes.
+Numerically verify the optimum for each t using a high-accuracy global /
+multi-start procedure and save the resulting x_t^* and f_t^*.
+
+Primary evaluation quantity:
+
+    simple_regret_b(t)
+      = f_t(x_best_after_b_calls) - f_t^*
+
+where b counts BO oracle calls AFTER initialization.
+
+Lower is better.
+
+All compared methods must use the same held-out tasks, evaluation budgets,
+and paired random seeds wherever applicable.
+
+============================================================
+EXPERIMENT A
+WHERE SHOULD CROSS-TASK KNOWLEDGE ENTER BO?
+============================================================
+
+Scientific question:
+
+"As prior tasks accumulate, which transfer interface converts additional
+cross-task experience into faster optimization on a new task?"
+
+This is a TASK-SCALING experiment.
+
+Compare, at every available training-task checkpoint:
+
+1. STBO
+   - no cross-task transfer
+
+2. MTBO
+   - shared-surrogate / representation transfer
+   - use the existing repository implementation exactly
+
+3. POGPE
+   - GP-expert transfer, if the existing Branin implementation is available
+
+4. SGPE
+   - GP-expert transfer, if the existing Branin implementation is available
+
+5. BOLT / Top-K SFT initializer
+   - learned task-conditioned initialization from high-performing standalone
+     candidates
+   - IMPORTANT: call it "BOLT" only if the implementation is actually the
+     repository's BOLT baseline.
+   - If it is only an approximate reproduction, label it "Top-K SFT".
+
+6. ORPT (H=1)
+   - rollout-aware learned initialization
+
+Do not add methods merely to make the plot crowded.
+OptFormer may be evaluated and retained in supplementary output if its
+existing Branin implementation is directly reusable, but the main purpose
+of this experiment is to contrast transfer interfaces.
+
+For each method and checkpoint T, record simple regret at:
+
+    b = 0, 5, 10, 50
+
+where b=0 means immediately after evaluating the initialization pool.
+
+Also store the complete b=0...50 regret trajectory.
+
+PRIMARY FIGURE A
+----------------
+
+Create a paper-ready multi-panel figure showing task scaling.
+
+Recommended panels:
+
+(a) Initialization
+    b = 0
+
+(b) Early BO
+    b = 10
+
+(c) Full BO budget
+    b = 50
+
+x-axis label, EXACT:
+    Number of completed training tasks
+
+y-axis label, EXACT:
+    Simple regret to global optimum ↓
+
+Panel titles, EXACT:
+    Initialization (0 BO calls)
+    After 10 BO calls
+    After 50 BO calls
+
+Do not use "performance", "score", or "objective" as the y-axis label.
+The fact that we know the true global optimum is the point of this synthetic
+experiment.
+
+STBO does not depend on the number of training tasks. Plot it as a horizontal
+reference curve / repeated reference values, whichever is visually cleaner,
+but make its meaning unambiguous.
+
+Also generate a secondary trajectory plot at T=50:
+
+x-axis:
+    Oracle calls after initialization
+
+y-axis:
+    Simple regret to global optimum ↓
+
+Include a horizontal reference at zero only if it is visually meaningful.
+Label it:
+    Global optimum
+
+Do not make zero look like another algorithm.
+
+============================================================
+EXPERIMENT B
+DOES STANDALONE POINT QUALITY AGREE WITH DOWNSTREAM UTILITY?
+============================================================
+
+Scientific question:
+
+"How does the ranking induced by standalone candidate quality differ from
+the ranking induced by downstream BO outcomes?"
+
+This is NOT primarily a model-comparison experiment.
+It tests whether the proxy used to identify a "good candidate" is aligned
+with the quantity that matters after BO continues.
+
+For candidate pair (x_i, x_j), define:
+
+    Delta_0
+      = standalone utility difference
+
+and, using MATCHED base initialization pools A_r,
+
+    Delta_h
+      = average_r [
+          U_h(A_r ∪ {x_i}) - U_h(A_r ∪ {x_j})
+        ]
+
+The two pools in each matched comparison must differ in exactly one candidate.
+Use identical base sets and appropriately controlled BO randomness for both
+members of the pair.
+
+Evaluate horizons:
+
+    h in {1, 2, 3, 5, 10, 20, 50}
+
+Compute:
+
+    reversal_rate(h)
+      = P(sign(Delta_0) != sign(Delta_h))
+
+Handle near-ties explicitly.
+Do not let tiny numerical differences count as meaningful reversals.
+Reuse the existing ORPT reliability / comparison criterion if appropriate,
+and additionally report how results change with and without reliability
+filtering.
+
+PRIMARY FIGURE B1
+-----------------
+
+x-axis, EXACT:
+    Rollout horizon h
+
+y-axis, EXACT:
+    Ranking reversal rate (%)
+
+Title / panel label text:
+    Standalone vs. rollout ranking
+
+Mark the ORPT training horizon used in the main synthetic experiments.
+For the current setup this is expected to be H=1.
+
+Annotation text, EXACT:
+    Training horizon H=1
+
+This plot should answer whether the mismatch grows, shrinks, or changes
+non-monotonically as the downstream horizon increases.
+
+------------------------------------------------------------
+IMPORTANT: CHECK GENERALIZATION OUTSIDE THE TRAINING HORIZON
+------------------------------------------------------------
+
+A reversal measured at h=1 is not enough.
+
+Also compute whether a ranking induced by the TRAINING horizon remains
+aligned with longer downstream horizons.
+
+For H_train = 1, compute:
+
+    agreement_Htrain(h)
+      = P(
+          sign(Delta_Htrain) == sign(Delta_h)
+        )
+
+for:
+    h in {1, 2, 3, 5, 10, 20, 50}
+
+PRIMARY FIGURE B2
+-----------------
+
+x-axis, EXACT:
+    Evaluation horizon h
+
+y-axis, EXACT:
+    Ranking agreement with H=1 (%)
+
+Panel title, EXACT:
+    Short-horizon preference consistency
+
+This is important because ORPT is trained using a short rollout horizon but
+is evaluated after a much longer BO budget.
+
+Also save:
+- number of evaluated pairs
+- number retained after reliability filtering
+- reversal counts
+- agreement counts
+- confidence intervals
+
+OPTIONAL QUALITATIVE BRANIN VISUALIZATION
+-----------------------------------------
+
+Find one representative, NON-CHERRY-PICKED reversal case using a deterministic
+selection rule, e.g. the reliable reversal with large |Delta_h| among the
+predefined evaluation set.
+
+Visualize two matched pools on the Branin contour:
+
+Left:
+    same shared base pool A + candidate preferred by standalone objective
+
+Right:
+    same A + candidate preferred by h-step rollout
+
+Show the subsequent BO evaluations up to the selected h.
+
+Use concise labels:
+
+    Standalone-preferred candidate
+    Rollout-preferred candidate
+    Shared initialization points
+    Subsequent BO evaluations
+    Global optimum
+
+Do not use the qualitative example as statistical evidence; it is only an
+intuition figure.
+
+============================================================
+EXPERIMENT C
+WHAT SHOULD A LEARNED INITIALIZER OPTIMIZE?
+============================================================
+
+Scientific question:
+
+"Given that initialization is learned across tasks, which supervision signal
+produces initialization that is most useful to downstream BO?"
+
+This experiment must separate MODEL CAPACITY from TRAINING SIGNAL as much as
+possible.
+
+Evaluate:
+
+1. Random initialization
+   - no learned transfer
+
+2. Prior-best reuse
+   - reuse / transfer best solutions from previous tasks using a reasonable
+     task-independent rule
+   - document exact construction
+
+3. Context -> optimum regression
+   - simple non-LLM learned initializer using training pairs
+       (task context t, best/optimal x)
+   - use a small, standard model
+   - this tests whether the low-dimensional Branin task can simply be solved
+     by direct cross-task regression
+   - keep implementation deliberately simple and document it
+
+4. Top-K SFT / BOLT
+   - supervised imitation of individually high-performing candidates
+
+5. H=0 preference tuning
+   - SAME reference model / preference-learning pipeline as ORPT
+   - preferences determined only by standalone objective values
+   - no downstream BO rollout used to label preferences
+
+6. ORPT, H=1
+   - identical preference-learning pipeline except preferences use
+     downstream rollout outcomes
+
+If existing H=2 or H=3 trained models already exist and are reproducible,
+evaluate them as secondary variants, but do not make the main plot unreadable.
+
+CRITICAL CONTROL:
+For Top-K SFT, H=0 preference tuning, and H>0 ORPT:
+- use the same base model family
+- same training tasks
+- same test tasks
+- same proposal budget
+- same downstream BO
+- same decoding/evaluation protocol
+- avoid changing anything other than the learning signal unless required
+  by the method itself
+
+PRIMARY FIGURE C
+----------------
+
+At T=50, plot downstream BO trajectories for all initializer variants.
+
+x-axis, EXACT:
+    Oracle calls after initialization
+
+y-axis, EXACT:
+    Simple regret to global optimum ↓
+
+Preferred legend labels:
+
+    Random
+    Prior-best reuse
+    Context-to-optimum regression
+    Top-K SFT
+    H=0 preference
+    ORPT (H=1)
+
+If "BOLT" is an exact implementation of the existing baseline, use:
+
+    BOLT (Top-K SFT)
+
+instead of "Top-K SFT".
+
+Do NOT call an approximate baseline "BOLT".
+
+Also produce a compact result table with:
+
+    Method
+    Initialization regret
+    Regret @ 5
+    Regret @ 10
+    Regret @ 50
+
+============================================================
+STATISTICS
+============================================================
+
+Use paired evaluation wherever possible.
+
+Preserve the same held-out 20 tasks across every compared method.
+
+Use the repository's established evaluation seed protocol.
+If the current code does not provide enough repeated stochastic evaluations,
+add a small number of explicit independent evaluation seeds and document them.
+
+For figures:
+- show central estimate + uncertainty
+- prefer the paper's existing convention if one already exists
+- otherwise use mean with 95% bootstrap CI over held-out tasks
+- use the SAME aggregation rule for every method in a panel
+
+Never aggregate training tasks and held-out tasks together.
+
+Store per-task, per-seed raw results before aggregation.
+
+============================================================
+FIGURE QUALITY / LABELING REQUIREMENTS
+============================================================
+
+These figures may go directly into an ICML submission.
+
+Requirements:
+
+- vector PDF output
+- also export high-resolution PNG for inspection
+- no figure title that duplicates the LaTeX caption
+- readable at single-column paper width
+- font sizes consistent with the current paper
+- no oversized legends
+- no clipped labels
+- no excessive decimal precision
+- colorblind-safe method distinction
+- do not rely on color alone where practical
+- use consistent method colors / line styles across Figures A, B, and C
+- ORPT must not receive visually misleading emphasis
+- global optimum/reference lines must be visually distinguishable from methods
+- arrows ↑ / ↓ should appear in metric labels when useful
+- use "BO calls", not "steps", when the x-axis counts oracle evaluations
+- use "training tasks" consistently, not alternating between
+  "source tasks", "previous tasks", etc.
+
+Exact terminology to preserve:
+
+    Number of completed training tasks
+    Oracle calls after initialization
+    Simple regret to global optimum ↓
+    Rollout horizon h
+    Ranking reversal rate (%)
+    Evaluation horizon h
+    Ranking agreement with H=1 (%)
+
+Do not label a plot "BOLT vs ORPT" unless that is literally the comparison.
+
+============================================================
+DELIVERABLES
+============================================================
+
+Keep this work isolated from existing main experiment outputs.
+
+Create an appropriately named motivational-experiment directory following
+the repository structure.
+
+Provide:
+
+1. Reproducible experiment scripts/configs.
+
+2. Raw results:
+   - per task
+   - per method
+   - per training checkpoint
+   - per evaluation seed
+   - per BO budget / rollout horizon as appropriate
+
+3. Aggregated CSV or JSON files used by each figure.
+
+4. Paper-ready figures:
+   - motivation_A_task_scaling.pdf/png
+   - motivation_A_trajectory_T50.pdf/png
+   - motivation_B_reversal.pdf/png
+   - motivation_B_horizon_agreement.pdf/png
+   - motivation_B_example.pdf/png if a valid qualitative example exists
+   - motivation_C_initializer_objective.pdf/png
+
+5. A concise `motivation_results.md` containing:
+   - exact experimental configuration
+   - what each panel measures
+   - factual observations only
+   - no claims unsupported by measured results
+   - any unexpected results or failed hypotheses
+   - any implementation deviations from the existing main experiment
+
+6. A LaTeX-ready file containing proposed figure inclusions and captions.
+   Captions must describe what was measured, not claim an expected conclusion.
+
+7. A short reproducibility section with exact commands to rerun each
+   experiment and regenerate each figure.
+
+============================================================
+WORKFLOW
+============================================================
+
+Do not immediately launch expensive runs.
+
+First:
+
+1. Inspect the repository.
+2. Identify the exact existing files/classes/functions corresponding to:
+   - Branin task generation
+   - global domain bounds
+   - STBO
+   - MTBO
+   - POGPE / SGPE
+   - BOLT / Top-K SFT
+   - ORPT H=0 / H=1
+   - BO rollout evaluation
+   - plotting
+3. Write a short implementation plan.
+4. Identify which requested results can be obtained from existing checkpoints
+   and logs versus which require new training/runs.
+5. Check the plan for fairness / confounds.
+6. Then implement and run.
+
+If an existing implementation does not support one of the requested
+comparisons cleanly, document the issue rather than silently changing the
+scientific definition.
+
+Most importantly: these are motivational experiments, not benchmark padding.
+Every artifact should make one of the three questions A/B/C easier for a
+reviewer to answer.

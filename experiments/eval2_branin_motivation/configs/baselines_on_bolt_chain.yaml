@@ -1,0 +1,55 @@
+# STBO / MTBO / POGPE / SGPE heldout baselines for Experiment A, pointed at
+# the BOLT-only chain's run_dir (same experiment_id, deliberately NOT the
+# committed ..._h1.yaml's run_dir).
+#
+# Why: gp_expert_transfer.py::train_gp_expert_pool and
+# mtbo.py::train_mtbo_surrogate both read cfg.trajectories_dir literally --
+# whichever run produced the cfg they're called with. The committed
+# ..._h1.yaml sets build_orpt: true in the SAME file that also turns on
+# build_stbo/mtbo/pogpe/sgpe, so running baselines under that config would
+# train them on trajectories whose post-milestone-2 initializations were
+# already sampled from the ORPT checkpoint (checkpoint_to_sample_from picks
+# ORPT when cfg.build_orpt) -- not neutral cross-task experience, but
+# experience already shaped by the rollout-aware method this experiment
+# means to compare against. See IMPLEMENTATION_PLAN.md section 3.
+#
+# This file shares experiment_id (hence run_dir) with
+# synthetic_50train_20heldout_bolt_inline_example_smaller.yaml byte-for-byte
+# on every task/BO/task-value field, so all six Experiment-A methods are
+# compared against the exact same 50 train-task trajectories. It does not
+# edit either committed file.
+experiment_id: synthetic_branin_50train_20heldout_bolt_v3_smaller
+milestones: [2, 5, 10, 20, 30, 40, 50]
+num_train_tasks: 50
+num_heldout_tasks: 20
+
+train_task_t_override: [0.005, 0.025, 0.045, 0.065, 0.085, 0.105, 0.125, 0.145, 0.165, 0.185, 0.205, 0.225, 0.245, 0.265, 0.285, 0.305, 0.325, 0.345, 0.365, 0.385, 0.405, 0.425, 0.445, 0.465, 0.485, 0.505, 0.525, 0.545, 0.565, 0.585, 0.605, 0.625, 0.645, 0.665, 0.685, 0.705, 0.725, 0.745, 0.765, 0.785, 0.805, 0.825, 0.845, 0.865, 0.885, 0.905, 0.925, 0.945, 0.965, 0.985]
+heldout_task_t_override: [0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
+
+oracle_budget: 50
+init_size: 5
+bsz: 10
+bo_seed: 42
+bo_candidate_pool_size: 128
+bo_lengthscale: 0.2
+bo_ucb_beta: 2.0
+trajectory_parallel_workers: 2
+table_k_checkpoints: [0, 1, 2, 5, 10, 20, 30, 40, 50]
+
+proposal_source: llm
+sampling_temperature: 1
+sft_top_n_per_task: 20
+sft_epochs: 5
+torchtune_config: qwen_2_5_3B_lora.yaml
+torchtune_recipe: lora_finetune_distributed
+base_checkpoint_dir: fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct
+cuda_visible_devices: "0,1"
+
+build_orpt: false
+build_stbo: true
+build_mtbo: true
+build_pogpe: true
+build_sgpe: true
+# mtbo_top_n_per_task/mtbo_max_train_points/gp_expert_top_n_per_task left at
+# config.py's own dataclass defaults (20 / 256 / 30) -- identical to what the
+# committed ..._h1.yaml sets explicitly, so this is not a hidden deviation.
