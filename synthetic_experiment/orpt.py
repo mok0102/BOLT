@@ -18,7 +18,6 @@ from .steps import (
     FINE_TUNING_DIR, _run, checkpoint_ready, cleanup_intermediate_epochs,
     materialize_hf_checkpoint, torchrun_master_port, tune_executable,
 )
-from .task_splits import task_name
 
 
 def check_training_size(data: Path, recipe: Path, epochs: int) -> None:
@@ -36,8 +35,8 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int) -> Path:
         print(f"[ORPT pairs m={milestone}] cached: {target}", flush=True)
         return target
     records = []
-    task_values = cfg.train_task_values[:milestone]
-    total_tasks = len(task_values)
+    tasks = cfg.train_tasks[:milestone]
+    total_tasks = len(tasks)
     milestone_started = time.perf_counter()
     print(
         f"[ORPT pairs m={milestone}] start: tasks={total_tasks}, "
@@ -45,14 +44,14 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int) -> Path:
         f"backgrounds={cfg.mi_num_backgrounds}, target_pairs/task={cfg.mi_target_pairs_per_task}",
         flush=True,
     )
-    for index, task_t in enumerate(task_values):
+    for index, task in enumerate(tasks):
         position = index + 1
-        name = task_name(index)
+        name = task.name
         task_started = time.perf_counter()
         bank = build_eligible_bank(cfg.trajectories_dir / f"{name}.csv")
         print(
             f"[ORPT pairs m={milestone}] task {position}/{total_tasks} "
-            f"{name} t={task_t:.3f} bank={len(bank)}: scoring likelihoods",
+            f"{name} bank={len(bank)}: scoring likelihoods",
             flush=True,
         )
         if len(bank) < 3:
@@ -65,7 +64,7 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int) -> Path:
             continue
         scoring_started = time.perf_counter()
         likelihoods = score_sequences(
-            cfg, cfg.milestone_checkpoint_dir(milestone), task_t, [c.seq for c in bank],
+            cfg, cfg.milestone_checkpoint_dir(milestone), task.transform, [c.seq for c in bank],
         )
         scoring_seconds = time.perf_counter() - scoring_started
         print(
@@ -75,7 +74,7 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int) -> Path:
         )
         mi_started = time.perf_counter()
         task_records = construct_pairs_for_task(
-            cfg, name, task_t, bank, likelihoods, random.Random(cfg.mi_seed + index),
+            cfg, task, bank, likelihoods, random.Random(cfg.mi_seed + index),
             cfg.run_dir / "mi_evaluations" / f"milestone_{milestone}" / name,
         )
         mi_seconds = time.perf_counter() - mi_started
@@ -99,7 +98,11 @@ def build_orpt_pairs(cfg: ExperimentConfig, milestone: int) -> Path:
     diagnostic.write_text(json.dumps(records, indent=2))
     rows = []
     for record in records:
-        prefix = messages(record["task_t"])
+        # Rebuilt from the authoritative manifest via task_index, never from
+        # a transform/descriptor that might have been baked into the
+        # diagnostics JSON itself (there isn't one -- see pair_construction.py).
+        task = cfg.train_tasks[record["task_index"]]
+        prefix = messages(task.transform)
         rows.append({
             "chosen": prefix + [{"role": "assistant", "content": record["chosen_sequence"]}],
             "rejected": prefix + [{"role": "assistant", "content": record["rejected_sequence"]}],

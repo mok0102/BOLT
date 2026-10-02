@@ -17,7 +17,7 @@ def paired_difference_stats(diffs: list[float]) -> tuple[float, float]:
     return mean, se
 
 
-def construct_pairs_for_task(cfg, task_name: str, task_t: float, bank: list[EligibleCandidate],
+def construct_pairs_for_task(cfg, task, bank: list[EligibleCandidate],
                              log_likelihoods: dict[str, float], rng: random.Random, work_dir: Path) -> list[dict]:
     if len(bank) < 3:
         return []
@@ -32,7 +32,7 @@ def construct_pairs_for_task(cfg, task_name: str, task_t: float, bank: list[Elig
             backgrounds.append(background); seeds.append(rng.randrange(2**31 - 1))
     if len(backgrounds) < 2:
         return []
-    utilities = run_candidates_one_step(cfg, task_t, backgrounds, candidates, work_dir, seeds)
+    utilities = run_candidates_one_step(cfg, task, backgrounds, candidates, work_dir, seeds)
     pairs = []
     for new in range(len(candidates)):
         for old in range(new):
@@ -46,7 +46,12 @@ def construct_pairs_for_task(cfg, task_name: str, task_t: float, bank: list[Elig
             # prefer it when its own objective score is worse.
             if chosen.y <= rejected.y:
                 continue
-            pairs.append({"task": task_name, "task_t": task_t, "reference_sequence": f"task_t={task_t:.17g}",
+            # task_split/task_index are the authoritative identity (orpt.py
+            # rebuilds the DPO prompt from cfg.train_tasks[task_index], never
+            # trusting a transform/descriptor baked into this diagnostics
+            # record); reference_sequence is informational only.
+            pairs.append({"task": task.name, "task_split": task.split, "task_index": task.index,
+                          "reference_sequence": task.descriptor,
                           "chosen_sequence": chosen.seq, "chosen_score": chosen.y,
                           "rejected_sequence": rejected.seq, "rejected_score": rejected.y,
                           "delta": delta, "se": se})

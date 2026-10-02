@@ -7,14 +7,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .branin import BraninTask
+from .branin import BraninTaskTransform
 from .config import ExperimentConfig
 from .steps import _scaled, _uniform_points, write_trajectory
-from .task_splits import task_name
+from .task_splits import TaskRecord, task_context_embedding
 
 
-def _features(x: np.ndarray, task_t: float) -> np.ndarray:
-    return np.column_stack((_scaled(np.asarray(x, dtype=float)), np.full(len(x), task_t)))
+def _features(x: np.ndarray, transform: BraninTaskTransform) -> np.ndarray:
+    x = np.asarray(x, dtype=float)
+    embedding = np.tile(task_context_embedding(transform), (len(x), 1))
+    return np.column_stack((_scaled(x), embedding))
 
 
 def _kernel(a: np.ndarray, b: np.ndarray, lengthscale: float) -> np.ndarray:
@@ -32,18 +34,19 @@ def train_mtbo_surrogate(cfg: ExperimentConfig, milestone: int) -> Path:
             if (int(saved['milestone']) == milestone and
                 int(saved['top_n']) == cfg.mtbo_top_n_per_task and
                 int(saved['max_points']) == cfg.mtbo_max_train_points and
-                float(saved['lengthscale']) == cfg.bo_lengthscale):
+                float(saved['lengthscale']) == cfg.bo_lengthscale and
+                str(saved['manifest_token']) == cfg.manifest.token):
                 return destination
     chunks_x, chunks_y = [], []
-    for index in range(milestone):
-        source = cfg.trajectories_dir / f"{task_name(index)}.csv"
+    for task in cfg.train_tasks[:milestone]:
+        source = cfg.trajectories_dir / f"{task.name}.csv"
         if not source.exists():
             raise FileNotFoundError(source)
         frame = pd.read_csv(source).nlargest(cfg.mtbo_top_n_per_task, 'train_y')
         if frame.empty:
             raise ValueError(f"{source}: no observations")
         x = np.asarray([json.loads(value) for value in frame.train_x], dtype=float)
-        chunks_x.append(_features(x, cfg.train_task_values[index]))
+        chunks_x.append(_features(x, task.transform))
         chunks_y.append(frame.train_y.to_numpy(dtype=float))
     x, y = np.concatenate(chunks_x), np.concatenate(chunks_y)
     if len(x) > cfg.mtbo_max_train_points:
@@ -54,7 +57,7 @@ def train_mtbo_surrogate(cfg: ExperimentConfig, milestone: int) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     np.savez(destination, x=x, y=y, milestone=milestone,
              top_n=cfg.mtbo_top_n_per_task, max_points=cfg.mtbo_max_train_points,
-             lengthscale=cfg.bo_lengthscale)
+             lengthscale=cfg.bo_lengthscale, manifest_token=cfg.manifest.token)
     return destination
 
 
@@ -63,8 +66,9 @@ class _SharedGP:
         with np.load(path) as saved:
             if (float(saved['lengthscale']) != cfg.bo_lengthscale or
                 int(saved['top_n']) != cfg.mtbo_top_n_per_task or
-                int(saved['max_points']) != cfg.mtbo_max_train_points):
-                raise ValueError(f"{path}: MTBO settings differ from checkpoint")
+                int(saved['max_points']) != cfg.mtbo_max_train_points or
+                str(saved['manifest_token']) != cfg.manifest.token):
+                raise ValueError(f"{path}: MTBO settings or task manifest differ from this config")
             self.x, y = saved['x'], saved['y']
         self.lengthscale = cfg.bo_lengthscale
         self.center = float(y.mean())
@@ -77,7 +81,7 @@ class _SharedGP:
         return self.center + self.scale * (_kernel(self.x, features, self.lengthscale).T @ self.alpha)
 
 
-def run_mtbo_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed: int, milestone: int) -> Path:
+def run_mtbo_bo(cfg: ExperimentConfig, task: TaskRecord, destination: Path, *, seed: int, milestone: int) -> Path:
     if destination.exists():
         return destination
     checkpoint = cfg.mtbo_checkpoint(milestone)
@@ -86,14 +90,14 @@ def run_mtbo_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed
     shared = _SharedGP(checkpoint, cfg)
     rng = np.random.default_rng(seed)
     x = _uniform_points(rng, cfg.init_size)
-    task = BraninTask(task_t)
-    y = np.asarray(task(x), dtype=float)
+    oracle = task.oracle()
+    y = np.asarray(oracle(x), dtype=float)
     partial = destination.with_suffix('.partial.csv')
-    write_trajectory(partial, task_t, x, y)
+    write_trajectory(partial, cfg, task, x, y)
     for _ in range(cfg.oracle_budget):
         candidates = _uniform_points(rng, cfg.bo_candidate_pool_size)
-        observed = _features(x, task_t)
-        proposed = _features(candidates, task_t)
+        observed = _features(x, task.transform)
+        proposed = _features(candidates, task.transform)
         # Adapt the shared prediction to observed target-task residuals.
         residual = (y - shared.mean(observed)) / shared.scale
         kxx = _kernel(observed, observed, shared.lengthscale) + 1e-5 * np.eye(len(x))
@@ -108,8 +112,8 @@ def run_mtbo_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed
         acquisition[np.min(distance, axis=1) < 1e-6] = -np.inf
         point = candidates[int(np.argmax(acquisition))]
         x = np.vstack((x, point))
-        y = np.append(y, task(point))
-        write_trajectory(partial, task_t, x, y)
-    result = write_trajectory(destination, task_t, x, y)
+        y = np.append(y, oracle(point))
+        write_trajectory(partial, cfg, task, x, y)
+    result = write_trajectory(destination, cfg, task, x, y)
     partial.unlink(missing_ok=True)
     return result

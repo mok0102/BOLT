@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from .config import ExperimentConfig
 from .steps import run_bo
-from .task_splits import task_name
 
 
 def checkpoint_for_arm(cfg: ExperimentConfig, arm: str):
@@ -34,23 +33,23 @@ def run_heldout_eval(cfg: ExperimentConfig, arm: str) -> None:
     if checkpoint is not None and not checkpoint.exists():
         raise RuntimeError(f"Missing checkpoint for {arm}: {checkpoint}")
     out = cfg.heldout_dir / arm
-    for index, task_t in enumerate(cfg.heldout_task_values):
-        destination = out / f"{task_name(index)}.csv"
+    for index, task in enumerate(cfg.heldout_tasks):
+        destination = out / f"{task.name}.csv"
         seed = cfg.bo_seed + 100_000 + index
         if kind == "MTBO":
             from .mtbo import run_mtbo_bo
-            run_mtbo_bo(cfg, task_t, destination, seed=seed, milestone=milestone)
+            run_mtbo_bo(cfg, task, destination, seed=seed, milestone=milestone)
         elif kind == "POGPE":
             from .gp_expert_transfer import run_pogpe_bo
-            run_pogpe_bo(cfg, task_t, destination, seed=seed, milestone=milestone)
+            run_pogpe_bo(cfg, task, destination, seed=seed, milestone=milestone)
         elif kind == "SGPE":
             from .gp_expert_transfer import run_sgpe_bo
-            run_sgpe_bo(cfg, task_t, destination, seed=seed, milestone=milestone)
+            run_sgpe_bo(cfg, task, destination, seed=seed, milestone=milestone)
         elif kind == "OptFormer":
             from .optformer import run_optformer_bo
-            run_optformer_bo(cfg, task_t, destination, seed=seed, milestone=milestone)
+            run_optformer_bo(cfg, task, destination, seed=seed, milestone=milestone)
         elif kind == "LLAMBO":
             from .llambo_optimization import run_llambo_bo
-            run_llambo_bo(cfg, task_t, destination, seed=seed)
+            run_llambo_bo(cfg, task, destination, seed=seed)
         else:
-            run_bo(cfg, task_t, destination, seed=seed, checkpoint=checkpoint)
+            run_bo(cfg, task, destination, seed=seed, checkpoint=checkpoint)

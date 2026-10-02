@@ -37,12 +37,12 @@ def checkpoint_to_sample_from(cfg: ExperimentConfig, task_position: int) -> Path
 def build_sft_data(cfg: ExperimentConfig, milestone: int) -> Path:
     target = cfg.milestones_dir / f"train_data_{milestone}.jsonl"
     rows = []
-    for index, task_t in enumerate(cfg.train_task_values[:milestone]):
-        frame = pd.read_csv(cfg.trajectories_dir / f"{task_name(index)}.csv")
+    for task in cfg.train_tasks[:milestone]:
+        frame = pd.read_csv(cfg.trajectories_dir / f"{task.name}.csv")
         ranked = frame.nlargest(cfg.sft_top_n_per_task, "train_y")
         for row in ranked.itertuples():
             point = json.loads(row.train_x)
-            rows.append({"messages": messages(task_t, point)})
+            rows.append({"messages": messages(task.transform, point)})
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("".join(json.dumps(row) + "\n" for row in rows))
     return target
@@ -89,7 +89,7 @@ def _run_task_stage(cfg: ExperimentConfig, task_indices: list[int], checkpoint: 
             initial_by_task[index] = sample_from_checkpoint(
                 cfg,
                 checkpoint,
-                cfg.train_task_values[index],
+                cfg.train_tasks[index],
                 cfg.init_size,
                 cfg.bo_seed + index,
                 sampling_output_path(cfg, checkpoint, destination),
@@ -107,11 +107,10 @@ def _run_task_stage(cfg: ExperimentConfig, task_indices: list[int], checkpoint: 
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="task-bo") as executor:
         futures = {}
         for index in pending:
-            task_t = cfg.train_task_values[index]
             future = executor.submit(
                 run_bo,
                 cfg,
-                task_t,
+                cfg.train_tasks[index],
                 cfg.trajectories_dir / f"{task_name(index)}.csv",
                 seed=cfg.bo_seed + index,
                 checkpoint=checkpoint,
@@ -127,7 +126,7 @@ def _run_task_stage(cfg: ExperimentConfig, task_indices: list[int], checkpoint: 
 def run_trajectory_chain(cfg: ExperimentConfig) -> None:
     cfg.ensure_dirs()
     start = 0
-    boundaries = sorted(set(cfg.milestones + [len(cfg.train_task_values)]))
+    boundaries = sorted(set(cfg.milestones + [len(cfg.train_tasks)]))
     for end in boundaries:
         if end <= start:
             continue

@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+from ..branin import BraninTaskTransform
 from ..prompts import messages
 from ..steps import _load_hf_model
 
 
-def score_sequences(cfg, checkpoint, task_t: float, sequences: list[str]) -> dict[str, float]:
+def score_sequences(cfg, checkpoint, transform: BraninTaskTransform, sequences: list[str]) -> dict[str, float]:
     """Score assistant coordinate tokens; random proposals use uniform q_t."""
     if cfg.proposal_source == "random":
         return {seq: 0.0 for seq in sequences}
     import torch
 
     model, tokenizer, _ = _load_hf_model(checkpoint, cfg.base_checkpoint_dir)
-    prompt_messages = messages(task_t)
+    prompt_messages = messages(transform)
     # Some transformers/tokenizers combinations return tokenizers.Encoding
     # from apply_chat_template(tokenize=True), which torch.tensor cannot
     # consume. Render text first and ask the tokenizer explicitly for a PT

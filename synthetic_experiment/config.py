@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
-from .task_splits import sample_task_values
+from .task_splits import TaskManifest, TaskRecord, load_manifest
 
 BOLT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,6 +17,12 @@ BOLT_ROOT = Path(__file__).resolve().parents[1]
 @dataclass
 class ExperimentConfig:
     experiment_id: str
+    # Required: path to a frozen task manifest (synthetic_experiment/
+    # task_splits.py::build_manifest/save_manifest) -- replaces the old
+    # per-config task_seed + train_task_t_override/heldout_task_t_override
+    # scalar-t sampling, which regenerated tasks from a seed on every load
+    # and was never persisted.
+    task_manifest: Path
     milestones: list[int] = field(default_factory=lambda: [10, 20])
     oracle_budget: int = 50
     init_size: int = 10
@@ -23,7 +30,6 @@ class ExperimentConfig:
     sft_epochs: int = 1
     num_train_tasks: int = 100
     num_heldout_tasks: int = 20
-    task_seed: int = 0
     bo_seed: int = 42
     bo_candidate_pool_size: int = 2048
     bo_lengthscale: float = 0.2
@@ -83,8 +89,6 @@ class ExperimentConfig:
     mi_utility_mode: str = "acquired_score"
     table_k_checkpoints: list[int] | None = None
     bolt_root: Path = BOLT_ROOT
-    train_task_t_override: list[float] | None = None
-    heldout_task_t_override: list[float] | None = None
 
     def __post_init__(self) -> None:
         self.milestones = sorted(set(self.milestones))
@@ -130,18 +134,35 @@ class ExperimentConfig:
         if not self.base_checkpoint_dir.is_absolute():
             self.base_checkpoint_dir = self.bolt_root / self.base_checkpoint_dir
 
-    @property
-    def task_values(self) -> tuple[list[float], list[float]]:
-        train, heldout = sample_task_values(self.num_train_tasks, self.num_heldout_tasks, self.task_seed)
-        return self.train_task_t_override or train, self.heldout_task_t_override or heldout
+        self.task_manifest = Path(self.task_manifest)
+        if not self.task_manifest.is_absolute():
+            self.task_manifest = self.bolt_root / self.task_manifest
+        self._manifest = load_manifest(self.task_manifest)
+        if self.num_train_tasks > len(self._manifest.train):
+            raise ValueError(
+                f"num_train_tasks={self.num_train_tasks} exceeds the manifest's "
+                f"{len(self._manifest.train)} training tasks ({self.task_manifest})"
+            )
+        if self.num_heldout_tasks > len(self._manifest.heldout):
+            raise ValueError(
+                f"num_heldout_tasks={self.num_heldout_tasks} exceeds the manifest's "
+                f"{len(self._manifest.heldout)} held-out tasks ({self.task_manifest})"
+            )
 
     @property
-    def train_task_values(self) -> list[float]:
-        return self.task_values[0]
+    def manifest(self) -> TaskManifest:
+        return self._manifest
 
     @property
-    def heldout_task_values(self) -> list[float]:
-        return self.task_values[1]
+    def train_tasks(self) -> tuple[TaskRecord, ...]:
+        """Stable prefix of the manifest's training split -- each split has
+        its own random stream (see build_manifest), so a smaller
+        num_train_tasks is always a prefix of a larger one, not a resample."""
+        return self._manifest.train[: self.num_train_tasks]
+
+    @property
+    def heldout_tasks(self) -> tuple[TaskRecord, ...]:
+        return self._manifest.heldout[: self.num_heldout_tasks]
 
     @property
     def run_dir(self) -> Path:
@@ -178,6 +199,34 @@ class ExperimentConfig:
     def ensure_dirs(self) -> None:
         for path in (self.trajectories_dir, self.checkpoints_dir, self.milestones_dir, self.aggregate_dir):
             path.mkdir(parents=True, exist_ok=True)
+        self._check_manifest_lock()
+
+    def _check_manifest_lock(self) -> None:
+        """Every pipeline stage here skips recomputation if its output
+        already exists (run_bo, checkpoint_ready, build_orpt_pairs, the
+        MTBO/MI caches) -- reusing an old run_dir under a new task manifest
+        would silently "finish in minutes" while actually just replaying
+        stale data from whatever manifest that run_dir was last used with.
+        This lock makes that a loud error instead."""
+        lock_path = self.run_dir / "task_manifest.lock.json"
+        if lock_path.exists():
+            locked = json.loads(lock_path.read_text())
+            if locked.get("token") != self.manifest.token:
+                raise ValueError(
+                    f"{self.run_dir} was already used with task manifest token "
+                    f"{locked.get('token')!r}, but this config points at manifest "
+                    f"{self.task_manifest} (token {self.manifest.token!r}) -- use a new "
+                    "experiment_id/run_dir for a different manifest, don't reuse this one"
+                )
+            return
+        if any(self.trajectories_dir.glob("*.csv")):
+            raise ValueError(
+                f"{self.run_dir} already has trajectory data but no task_manifest.lock.json "
+                "(a run from before the manifest system existed) -- use a new experiment_id/run_dir"
+            )
+        lock_path.write_text(json.dumps(
+            {"token": self.manifest.token, "task_manifest": str(self.task_manifest)}, indent=2,
+        ))
 
 
 def load_config(path: str | Path) -> ExperimentConfig:

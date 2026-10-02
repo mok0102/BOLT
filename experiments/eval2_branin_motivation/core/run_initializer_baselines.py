@@ -14,8 +14,8 @@ Output layout mirrors synthetic_experiment's own heldout convention exactly:
     <run_dir>/heldout/Random/task_XXXX.csv
     <run_dir>/heldout/PriorBestReuse/task_XXXX.csv
     <run_dir>/heldout/ContextRegression/task_XXXX.csv
-so core/regret.py's trajectory_path() (same `arm in {"STBO","LLAMBO"}` style
-no-milestone convention) reads them with zero special-casing.
+so core/regret.py's trajectory_path() (milestone=None is the no-milestone
+convention) reads them with zero special-casing.
 """
 
 from __future__ import annotations
@@ -33,7 +33,6 @@ for _p in (BOLT_ROOT, PKG_ROOT):
 
 from synthetic_experiment.config import ExperimentConfig  # noqa: E402
 from synthetic_experiment.steps import run_bo  # noqa: E402
-from synthetic_experiment.task_splits import task_name  # noqa: E402
 
 from core.initializer_baselines import (  # noqa: E402
     context_to_optimum_regression_init, prior_best_reuse_init,
@@ -53,19 +52,20 @@ def run_arm(
     if arm not in NO_MILESTONE_ARMS:
         raise ValueError(f"arm must be one of {NO_MILESTONE_ARMS}, got {arm!r}")
     out_dir = cfg.run_dir / "heldout" / arm
+    train_tasks = cfg.train_tasks[:n_train_tasks]
     written = []
-    for index, task_t in enumerate(cfg.heldout_task_values):
-        destination = out_dir / f"{task_name(index)}.csv"
+    for index, task in enumerate(cfg.heldout_tasks):
+        destination = out_dir / f"{task.name}.csv"
         seed = cfg.bo_seed + seed_offset + index
         if arm == "Random":
             initial_x = None  # run_bo's own uniform _uniform_points(seed, init_size) path
         elif arm == "PriorBestReuse":
-            initial_x = prior_best_reuse_init(cfg.trajectories_dir, n_train_tasks, cfg.init_size)
+            initial_x = prior_best_reuse_init(cfg.trajectories_dir, train_tasks, cfg.init_size)
         else:
             initial_x = context_to_optimum_regression_init(
-                cfg.trajectories_dir, n_train_tasks, task_t, cfg.init_size
+                cfg.trajectories_dir, train_tasks, task.transform, cfg.init_size
             )
-        written.append(run_bo(cfg, task_t, destination, seed=seed, initial_x=initial_x))
+        written.append(run_bo(cfg, task, destination, seed=seed, initial_x=initial_x))
     return written
 
 

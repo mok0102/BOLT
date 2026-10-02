@@ -7,25 +7,25 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .branin import BraninTask
+from .branin import BraninTaskTransform
 from .config import ExperimentConfig
-from .prompts import SYSTEM_PROMPT, format_task_t, parse_point, point_text
+from .prompts import SYSTEM_PROMPT, parse_point, point_text, task_descriptor
 from .steps import (
     FINE_TUNING_DIR, _load_hf_model, _run, _uniform_points, checkpoint_ready,
     cleanup_intermediate_epochs, materialize_hf_checkpoint, torchrun_master_port,
     tune_executable, write_trajectory,
 )
-from .task_splits import task_name
+from .task_splits import TaskRecord
 
 
 def _score_bin(score: float, edges: list[float]) -> int:
     return int(np.searchsorted(edges, score, side='right'))
 
 
-def _history_text(task_t: float, x: np.ndarray, y: np.ndarray, edges: list[float], limit: int) -> str:
+def _history_text(transform: BraninTaskTransform, x: np.ndarray, y: np.ndarray, edges: list[float], limit: int) -> str:
     rows = [f"{point_text(point)} -> bin {_score_bin(float(score), edges)}"
             for point, score in zip(x[-limit:], y[-limit:])]
-    return f"task_t={format_task_t(task_t)}\nObserved points (higher bin is better):\n" + "\n".join(rows) + "\nPropose the next point as [x1, x2]."
+    return f"{task_descriptor(transform)}\nObserved points (higher bin is better):\n" + "\n".join(rows) + "\nPropose the next point as [x1, x2]."
 
 
 def train_optformer(cfg: ExperimentConfig, milestone: int) -> Path:
@@ -34,9 +34,10 @@ def train_optformer(cfg: ExperimentConfig, milestone: int) -> Path:
     final = cfg.optformer_checkpoint_dir(milestone)
     if checkpoint_ready(final):
         return final
+    tasks = cfg.train_tasks[:milestone]
     source_frames = []
-    for index in range(milestone):
-        path = cfg.trajectories_dir / f"{task_name(index)}.csv"
+    for task in tasks:
+        path = cfg.trajectories_dir / f"{task.name}.csv"
         if not path.exists():
             raise FileNotFoundError(path)
         source_frames.append(pd.read_csv(path))
@@ -46,7 +47,7 @@ def train_optformer(cfg: ExperimentConfig, milestone: int) -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     (data_dir / f'bin_edges_{milestone}.json').write_text(json.dumps(edges))
     rows = []
-    for index, frame in enumerate(source_frames):
+    for task, frame in zip(tasks, source_frames):
         x = np.asarray([json.loads(value) for value in frame.train_x], dtype=float)
         y = frame.train_y.to_numpy(dtype=float)
         eligible = np.arange(1, len(x))
@@ -55,7 +56,7 @@ def train_optformer(cfg: ExperimentConfig, milestone: int) -> Path:
         for step in eligible:
             rows.append({'messages': [
                 {'role': 'system', 'content': SYSTEM_PROMPT},
-                {'role': 'user', 'content': _history_text(cfg.train_task_values[index], x[:step], y[:step], edges, cfg.optformer_context_length)},
+                {'role': 'user', 'content': _history_text(task.transform, x[:step], y[:step], edges, cfg.optformer_context_length)},
                 {'role': 'assistant', 'content': point_text(x[step])},
             ]})
     data_path = data_dir / f'train_data_{milestone}.jsonl'
@@ -81,7 +82,7 @@ def train_optformer(cfg: ExperimentConfig, milestone: int) -> Path:
     return final
 
 
-def run_optformer_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed: int, milestone: int) -> Path:
+def run_optformer_bo(cfg: ExperimentConfig, task: TaskRecord, destination: Path, *, seed: int, milestone: int) -> Path:
     if destination.exists():
         return destination
     checkpoint = cfg.optformer_checkpoint_dir(milestone)
@@ -94,13 +95,13 @@ def run_optformer_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *,
     rng = np.random.default_rng(seed)
     torch.manual_seed(seed)
     x = _uniform_points(rng, cfg.init_size)
-    task = BraninTask(task_t)
-    y = np.asarray(task(x), dtype=float)
+    oracle = task.oracle()
+    y = np.asarray(oracle(x), dtype=float)
     partial = destination.with_suffix('.partial.csv')
-    write_trajectory(partial, task_t, x, y)
+    write_trajectory(partial, cfg, task, x, y)
     fallback_count = 0
     for _ in range(cfg.oracle_budget):
-        user = _history_text(task_t, x, y, edges, cfg.optformer_context_length)
+        user = _history_text(task.transform, x, y, edges, cfg.optformer_context_length)
         prompt = tokenizer.apply_chat_template([{'role': 'system', 'content': SYSTEM_PROMPT},
                                                 {'role': 'user', 'content': user}], tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(prompt, return_tensors='pt').to(device)
@@ -113,9 +114,9 @@ def run_optformer_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *,
             point = _uniform_points(rng, 1)[0]
             fallback_count += 1
         x = np.vstack([x, point])
-        y = np.append(y, task(point))
-        write_trajectory(partial, task_t, x, y)
-    result = write_trajectory(destination, task_t, x, y)
+        y = np.append(y, oracle(point))
+        write_trajectory(partial, cfg, task, x, y)
+    result = write_trajectory(destination, cfg, task, x, y)
     partial.unlink(missing_ok=True)
     destination.with_suffix('.meta.json').write_text(json.dumps({'invalid_generation_fallbacks': fallback_count,
                                                                   'oracle_calls': cfg.oracle_budget}))

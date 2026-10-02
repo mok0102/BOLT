@@ -6,13 +6,12 @@
 # just a parallel-safe launch copy. See IMPLEMENTATION_PLAN.md.
 # Same experiment as synthetic_100train_20heldout_example.yaml, using inline
 # YAML lists for the explicitly fixed task values.
-experiment_id: synthetic_branin_50train_20heldout_mi30_composite_v3_smaller_h1 ### v3 chosen>rejected 포함v2 ### v2 chosen>rejected 포함
+experiment_id: synthetic_branin_50train_20heldout_mi30_composite_affine_v1_h1
 milestones: [2, 5, 10, 20, 30, 40, 50]
 num_train_tasks: 50
 num_heldout_tasks: 20
 
-train_task_t_override: [0.005, 0.025, 0.045, 0.065, 0.085, 0.105, 0.125, 0.145, 0.165, 0.185, 0.205, 0.225, 0.245, 0.265, 0.285, 0.305, 0.325, 0.345, 0.365, 0.385, 0.405, 0.425, 0.445, 0.465, 0.485, 0.505, 0.525, 0.545, 0.565, 0.585, 0.605, 0.625, 0.645, 0.665, 0.685, 0.705, 0.725, 0.745, 0.765, 0.785, 0.805, 0.825, 0.845, 0.865, 0.885, 0.905, 0.925, 0.945, 0.965, 0.985]
-heldout_task_t_override: [0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
+task_manifest: synthetic_experiment/task_manifests/branin_affine_v1_seed0.json
 
 oracle_budget: 50
 init_size: 5
@@ -55,7 +54,7 @@ mi_max_candidates_per_task: 30
 mi_tau_q: 1.0
 mi_z_min: 1.0
 mi_delta_t: 0.0
-mi_bo_steps: 1 # H=2, matching this run's cached MI evaluations.
+mi_bo_steps: 1 # H=1: the main ORPT training horizon.
 mi_utility_mode: terminal_best
 mi_parallel_workers: 16
 mi_seed: 42

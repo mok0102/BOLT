@@ -12,9 +12,10 @@ from pathlib import Path
 
 import numpy as np
 
-from .branin import BRANIN_BOUNDS, BraninTask
+from .branin import BRANIN_BOUNDS
 from .config import ExperimentConfig
 from .prompts import messages, parse_point
+from .task_splits import TaskRecord
 
 FINE_TUNING_DIR = "fine-tuning/query_plans"
 
@@ -241,7 +242,7 @@ def _load_hf_model(checkpoint: Path, base: Path):
 def sample_from_checkpoint(
     cfg: ExperimentConfig,
     checkpoint: Path,
-    task_t: float,
+    task: TaskRecord,
     n: int,
     seed: int,
     output_path: Path | None = None,
@@ -255,7 +256,7 @@ def sample_from_checkpoint(
         if loaded_model is not None
         else _load_hf_model(checkpoint, cfg.base_checkpoint_dir)
     )
-    prompt = tokenizer.apply_chat_template(messages(task_t), tokenize=False, add_generation_prompt=True)
+    prompt = tokenizer.apply_chat_template(messages(task.transform), tokenize=False, add_generation_prompt=True)
     # transformers versions differ on whether generate() accepts a
     # `generator` model kwarg. Seed torch directly for portable,
     # deterministic sampling instead of forwarding that version-specific
@@ -289,7 +290,9 @@ def sample_from_checkpoint(
             records.append({
                 "source": "llm",
                 "checkpoint": str(checkpoint),
-                "task_t": task_t,
+                "task_split": task.split,
+                "task_index": task.index,
+                "task_descriptor": task.descriptor,
                 "seed": seed,
                 "attempt": attempt,
                 "sample_index": sample_index,
@@ -307,7 +310,9 @@ def sample_from_checkpoint(
         records.append({
             "source": "random_fallback",
             "checkpoint": str(checkpoint),
-            "task_t": task_t,
+            "task_split": task.split,
+            "task_index": task.index,
+            "task_descriptor": task.descriptor,
             "seed": seed,
             "attempt": None,
             "sample_index": None,
@@ -327,7 +332,7 @@ def sample_from_checkpoint(
 
 def initial_points(
     cfg: ExperimentConfig,
-    task_t: float,
+    task: TaskRecord,
     seed: int,
     checkpoint: Path | None = None,
     sampling_output_path: Path | None = None,
@@ -335,24 +340,28 @@ def initial_points(
 ) -> np.ndarray:
     if checkpoint is not None and cfg.proposal_source == "llm":
         return sample_from_checkpoint(
-            cfg, checkpoint, task_t, cfg.init_size, seed, sampling_output_path, loaded_model
+            cfg, checkpoint, task, cfg.init_size, seed, sampling_output_path, loaded_model
         )
     return _uniform_points(np.random.default_rng(seed), cfg.init_size)
 
 
-def write_trajectory(path: Path, task_t: float, x: np.ndarray, y: np.ndarray) -> Path:
+def write_trajectory(path: Path, cfg: ExperimentConfig, task: TaskRecord, x: np.ndarray, y: np.ndarray) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
+    fieldnames = ["train_x", "train_y", "task_split", "task_index", "task_manifest"]
     with tmp.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["train_x", "train_y", "task_t"])
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for point, score in zip(x, y):
-            writer.writerow({"train_x": json.dumps(point.tolist()), "train_y": float(score), "task_t": task_t})
+            writer.writerow({
+                "train_x": json.dumps(point.tolist()), "train_y": float(score),
+                "task_split": task.split, "task_index": task.index, "task_manifest": cfg.manifest.token,
+            })
     tmp.replace(path)
     return path
 
 
-def run_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed: int, checkpoint: Path | None = None,
+def run_bo(cfg: ExperimentConfig, task: TaskRecord, destination: Path, *, seed: int, checkpoint: Path | None = None,
            initial_x: np.ndarray | None = None, max_bo_steps: int | None = None) -> Path:
     if destination.exists():
         return destination
@@ -362,20 +371,20 @@ def run_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed: int
         sampling_output_path = globals()["sampling_output_path"](cfg, checkpoint, destination)
     x = np.asarray(
         initial_x if initial_x is not None else initial_points(
-            cfg, task_t, seed, checkpoint, sampling_output_path
+            cfg, task, seed, checkpoint, sampling_output_path
         ),
         dtype=float,
     )
-    task = BraninTask(task_t)
-    y = np.asarray(task(x), dtype=float)
+    oracle = task.oracle()
+    y = np.asarray(oracle(x), dtype=float)
     steps = cfg.oracle_budget if max_bo_steps is None else max_bo_steps
     partial = destination.with_suffix(".partial.csv")
     print(
-        f"[BO] start task_t={task_t:.3f} init={len(x)} steps={steps} "
+        f"[BO] start task={task.split}/{task.name} init={len(x)} steps={steps} "
         f"checkpoint={checkpoint} destination={destination}",
         flush=True,
     )
-    write_trajectory(partial, task_t, x, y)
+    write_trajectory(partial, cfg, task, x, y)
     for step in range(steps):
         point = _gp_ucb_candidate(
             x,
@@ -386,15 +395,15 @@ def run_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed: int
             beta=cfg.bo_ucb_beta,
         )
         x = np.vstack([x, point])
-        y = np.append(y, task(point))
-        write_trajectory(partial, task_t, x, y)
+        y = np.append(y, oracle(point))
+        write_trajectory(partial, cfg, task, x, y)
         if step == 0 or (step + 1) % 10 == 0 or step + 1 == steps:
             print(
-                f"[BO] task_t={task_t:.3f} step={step + 1}/{steps} "
+                f"[BO] task={task.split}/{task.name} step={step + 1}/{steps} "
                 f"best={float(y.max()):.6f}",
                 flush=True,
             )
-    result = write_trajectory(destination, task_t, x, y)
+    result = write_trajectory(destination, cfg, task, x, y)
     partial.unlink(missing_ok=True)
     return result
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import pandas as pd
 
 from .config import ExperimentConfig
-from .task_splits import task_name
 
 
 def arms(cfg: ExperimentConfig) -> list[str]:
@@ -27,19 +26,22 @@ def arms(cfg: ExperimentConfig) -> list[str]:
 
 
 def build_heldout_per_task(cfg: ExperimentConfig) -> pd.DataFrame:
-    """Write plotting-ready heldout results for every arm, t, and budget k.
+    """Write plotting-ready heldout results for every arm, task, and budget k.
 
-    BraninTask returns -f_t because BOLT maximizes scores.  For this task
-    family the exact minimum is f_t*=10t, so simple_regret=f_best-10t and
-    zero is optimal for every t.
+    BraninTask returns -f(x) because BOLT maximizes scores. The optimum
+    value is read from the task manifest's own numerically verified
+    f_star (synthetic_experiment/global_optimum.py) -- never assumed from
+    a formula; every task shares the same canonical f_star by
+    construction (an input-space transform preserves it), but it is still
+    read per-task from the manifest rather than hard-coded here.
     """
 
     checkpoints = sorted(set(cfg.table_k_checkpoints or [cfg.oracle_budget]))
     records = []
     for arm in arms(cfg):
         method, _, milestone_text = arm.partition("-")
-        for index, task_t in enumerate(cfg.heldout_task_values):
-            path = cfg.heldout_dir / arm / f"{task_name(index)}.csv"
+        for index, task in enumerate(cfg.heldout_tasks):
+            path = cfg.heldout_dir / arm / f"{task.name}.csv"
             if not path.exists():
                 continue
             frame = pd.read_csv(path)
@@ -49,13 +51,13 @@ def build_heldout_per_task(cfg: ExperimentConfig) -> pd.DataFrame:
                     continue
                 best_score = float(window.train_y.max())
                 best_value = -best_score
-                optimum_value = 10.0 * task_t
+                optimum_value = task.verified.f_star
                 records.append({
                     "arm": arm,
                     "method": method,
                     "milestone": int(milestone_text) if milestone_text else None,
                     "task_index": index,
-                    "task_t": task_t,
+                    "task_manifest": cfg.manifest.token,
                     "oracle_calls": k,
                     "best_score": best_score,
                     "best_value": best_value,

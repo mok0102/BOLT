@@ -7,10 +7,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .branin import BraninTask
 from .config import ExperimentConfig
 from .steps import _scaled, _uniform_points, write_trajectory
-from .task_splits import task_name
+from .task_splits import TaskRecord
 
 
 def train_gp_expert_pool(cfg: ExperimentConfig, milestone: int) -> Path:
@@ -20,8 +19,8 @@ def train_gp_expert_pool(cfg: ExperimentConfig, milestone: int) -> Path:
     root = cfg.gp_expert_dir(milestone)
     root.mkdir(parents=True, exist_ok=True)
     entries = []
-    for index in range(milestone):
-        source = cfg.trajectories_dir / f"{task_name(index)}.csv"
+    for index, task in enumerate(cfg.train_tasks[:milestone]):
+        source = cfg.trajectories_dir / f"{task.name}.csv"
         if not source.exists():
             raise FileNotFoundError(source)
         frame = pd.read_csv(source).nlargest(cfg.gp_expert_top_n_per_task, "train_y")
@@ -40,7 +39,8 @@ def train_gp_expert_pool(cfg: ExperimentConfig, milestone: int) -> Path:
         entries.append(str(target))
     manifest = root / "manifest.json"
     manifest.write_text(json.dumps({"milestone": milestone, "top_n": cfg.gp_expert_top_n_per_task,
-                                    "lengthscale": cfg.bo_lengthscale, "experts": entries}, indent=2))
+                                    "lengthscale": cfg.bo_lengthscale, "manifest_token": cfg.manifest.token,
+                                    "experts": entries}, indent=2))
     return manifest
 
 
@@ -72,7 +72,7 @@ class _Expert:
         return mean, variance
 
 
-def run_pogpe_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed: int,
+def run_pogpe_bo(cfg: ExperimentConfig, task: TaskRecord, destination: Path, *, seed: int,
                  milestone: int, sgpe: bool = False) -> Path:
     if destination.exists():
         return destination
@@ -80,18 +80,19 @@ def run_pogpe_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, see
     if not manifest_path.exists():
         raise FileNotFoundError(f"Train POGPE experts first: {manifest_path}")
     manifest = json.loads(manifest_path.read_text())
-    if manifest['milestone'] != milestone or manifest['top_n'] != cfg.gp_expert_top_n_per_task or manifest['lengthscale'] != cfg.bo_lengthscale:
+    if (manifest['milestone'] != milestone or manifest['top_n'] != cfg.gp_expert_top_n_per_task
+            or manifest['lengthscale'] != cfg.bo_lengthscale or manifest.get('manifest_token') != cfg.manifest.token):
         raise ValueError(f"{manifest_path}: configuration differs from trained experts")
     experts = [_Expert(Path(path), cfg.bo_lengthscale) for path in manifest['experts']]
     if len(experts) != milestone:
         raise ValueError(f"{manifest_path}: expected {milestone} experts, got {len(experts)}")
     rng = np.random.default_rng(seed)
     x = _uniform_points(rng, cfg.init_size)
-    task = BraninTask(task_t)
-    y = np.asarray(task(x), dtype=float)
+    oracle = task.oracle()
+    y = np.asarray(oracle(x), dtype=float)
     target_expert = _Expert(None, cfg.bo_lengthscale, x=x, y=y) if sgpe else None
     partial = destination.with_suffix('.partial.csv')
-    write_trajectory(partial, task_t, x, y)
+    write_trajectory(partial, cfg, task, x, y)
     for _ in range(cfg.oracle_budget):
         candidates = _uniform_points(rng, cfg.bo_candidate_pool_size)
         predictions = [expert.predict(candidates) for expert in experts]
@@ -111,13 +112,13 @@ def run_pogpe_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, see
         acquisition[np.min(distance, axis=1) < 1e-6] = -np.inf
         point = candidates[int(np.argmax(acquisition))]
         x = np.vstack([x, point])
-        y = np.append(y, task(point))
-        write_trajectory(partial, task_t, x, y)
-    result = write_trajectory(destination, task_t, x, y)
+        y = np.append(y, oracle(point))
+        write_trajectory(partial, cfg, task, x, y)
+    result = write_trajectory(destination, cfg, task, x, y)
     partial.unlink(missing_ok=True)
     return result
 
 
-def run_sgpe_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed: int,
+def run_sgpe_bo(cfg: ExperimentConfig, task: TaskRecord, destination: Path, *, seed: int,
                 milestone: int) -> Path:
-    return run_pogpe_bo(cfg, task_t, destination, seed=seed, milestone=milestone, sgpe=True)
+    return run_pogpe_bo(cfg, task, destination, seed=seed, milestone=milestone, sgpe=True)

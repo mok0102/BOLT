@@ -16,14 +16,14 @@ def zero_step_utility(background, candidate) -> float:
     return max(c.y for c in [*background, candidate])
 
 
-def _evaluate_one(cfg, task_t, background, candidate, root, seed):
+def _evaluate_one(cfg, task, background, candidate, root, seed):
     pool = [*background, candidate]
     mi_pool_size = cfg.mi_bo_candidate_pool_size or cfg.bo_candidate_pool_size
     context = {
-        "task_t": task_t,
+        "task_split": task.split, "task_index": task.index, "task_manifest": cfg.manifest.token,
         "pool": [c.seq for c in pool],
         "seed": seed,
-        "version": 5,
+        "version": 6,  # v5 -> v6: cache key now hashes full task identity, not a bare task_t float
         "bo_steps": cfg.mi_bo_steps,
         "utility_mode": cfg.mi_utility_mode,
         "bo_candidate_pool_size": mi_pool_size,
@@ -43,7 +43,7 @@ def _evaluate_one(cfg, task_t, background, candidate, root, seed):
         bo_lengthscale=cfg.mi_bo_lengthscale,
         bo_ucb_beta=cfg.mi_bo_ucb_beta,
     )
-    run_bo(run_cfg, task_t, path, seed=seed, initial_x=initial_x, max_bo_steps=cfg.mi_bo_steps)
+    run_bo(run_cfg, task, path, seed=seed, initial_x=initial_x, max_bo_steps=cfg.mi_bo_steps)
     frame = pd.read_csv(path)
     acquired_scores = frame.train_y.iloc[len(pool):]
     acquired_score = float(acquired_scores.iloc[-1]) if len(acquired_scores) else None
@@ -74,7 +74,7 @@ def _evaluate_one(cfg, task_t, background, candidate, root, seed):
     return utility
 
 
-def run_candidates_one_step(cfg, task_t, backgrounds, candidates, root: Path, seeds):
+def run_candidates_one_step(cfg, task, backgrounds, candidates, root: Path, seeds):
     """Evaluate all candidate/background interventions concurrently.
 
     Jobs retain their preassigned shared seed and are written back to the
@@ -92,7 +92,7 @@ def run_candidates_one_step(cfg, task_t, backgrounds, candidates, root: Path, se
     print(f"[MI] running {len(jobs)} one-step BO jobs with {workers} workers", flush=True)
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mi-bo") as executor:
         futures = {
-            executor.submit(_evaluate_one, cfg, task_t, background, candidate, root, seed):
+            executor.submit(_evaluate_one, cfg, task, background, candidate, root, seed):
             (candidate_idx, background_idx)
             for candidate_idx, background_idx, candidate, background, seed in jobs
         }

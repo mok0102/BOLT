@@ -8,10 +8,11 @@ from pathlib import Path
 
 import numpy as np
 
-from .branin import BraninTask
+from .branin import BRANIN_BOUNDS
 from .config import ExperimentConfig
-from .prompts import format_task_t, parse_point, point_text
+from .prompts import parse_point, point_text, task_descriptor
 from .steps import _load_hf_model, _uniform_points, write_trajectory
+from .task_splits import TaskRecord
 
 _NUMBER = re.compile(r'(?<![\d.])-?\d+(?:\.\d+)?')
 
@@ -46,7 +47,7 @@ def _generate(model, tokenizer, device, system: str, user: str, n: int, max_toke
     return texts, input_length
 
 
-def run_llambo_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, seed: int) -> Path:
+def run_llambo_bo(cfg: ExperimentConfig, task: TaskRecord, destination: Path, *, seed: int) -> Path:
     if destination.exists():
         return destination
     model, tokenizer, device = _load_hf_model(cfg.base_checkpoint_dir, cfg.base_checkpoint_dir)
@@ -54,10 +55,10 @@ def run_llambo_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, se
     rng = np.random.default_rng(seed)
     torch.manual_seed(seed)
     x = _uniform_points(rng, cfg.init_size)
-    task = BraninTask(task_t)
-    y = np.asarray(task(x), dtype=float)
+    oracle = task.oracle()
+    y = np.asarray(oracle(x), dtype=float)
     partial = destination.with_suffix('.partial.csv')
-    write_trajectory(partial, task_t, x, y)
+    write_trajectory(partial, cfg, task, x, y)
     input_tokens = 0
     rounds = 0
     reason = 'oracle_budget_reached'
@@ -70,7 +71,7 @@ def run_llambo_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, se
             break
         rounds += 1
         history, best = _history(x, y, cfg.llambo_context_length)
-        user = f'task_t={format_task_t(task_t)}\nPrevious points and normalized scores (0-100):\n{history}'
+        user = f'{task_descriptor(task.transform)}\nPrevious points and normalized scores (0-100):\n{history}'
         candidates = []
         counts = ((None, (cfg.llambo_candidates + 1)//2),
                   (min(100, round(100 + 100*cfg.llambo_alpha)), cfg.llambo_candidates//2))
@@ -79,8 +80,9 @@ def run_llambo_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, se
                 continue
             instruction = ('Propose a new Branin point expected to beat the best shown.' if target is None else
                            f'Propose a new Branin point expected to achieve normalized score {target}.')
-            system = ('You optimize a two-dimensional Branin function. x1 must be in [-5,10], '
-                      'x2 in [0,15]. ' + instruction + ' Return only [x1, x2].')
+            system = (f'You optimize a two-dimensional Branin function. x1 must be in '
+                      f'[{BRANIN_BOUNDS[0][0]:g},{BRANIN_BOUNDS[0][1]:g}], '
+                      f'x2 in [{BRANIN_BOUNDS[1][0]:g},{BRANIN_BOUNDS[1][1]:g}]. ' + instruction + ' Return only [x1, x2].')
             texts, cost = _generate(model, tokenizer, device, system, user, count, 32)
             input_tokens += cost
             candidates.extend(point for text in texts if (point := parse_point(text)) is not None)
@@ -106,9 +108,9 @@ def run_llambo_bo(cfg: ExperimentConfig, task_t: float, destination: Path, *, se
             continue
         point = max(ranked, key=lambda pair: pair[0])[1]
         x = np.vstack([x, point])
-        y = np.append(y, task(point))
-        write_trajectory(partial, task_t, x, y)
-    result = write_trajectory(destination, task_t, x, y)
+        y = np.append(y, oracle(point))
+        write_trajectory(partial, cfg, task, x, y)
+    result = write_trajectory(destination, cfg, task, x, y)
     partial.unlink(missing_ok=True)
     destination.with_suffix('.meta.json').write_text(json.dumps({'oracle_calls': len(x) - cfg.init_size,
         'input_tokens': input_tokens, 'terminated_reason': reason}, indent=2))

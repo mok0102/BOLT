@@ -1,0 +1,2409 @@
+{
+  "heldout": [
+    {
+      "index": 0,
+      "name": "task_0000",
+      "transform": {
+        "rotation_deg": 220.2,
+        "scale": 0.966,
+        "shift": [
+          1.06,
+          -1.54
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.6523464985338112,
+        "edge_margin": 4.828764780361118,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 18,
+        "n_restarts_total": 28,
+        "x_star": [
+          -0.17123521963888244,
+          9.41510508544431
+        ],
+        "x_star_all": [
+          [
+            -0.17123521963888244,
+            9.41510508544431
+          ],
+          [
+            -4.682436331686743,
+            5.349897461635913
+          ]
+        ]
+      }
+    },
+    {
+      "index": 1,
+      "name": "task_0001",
+      "transform": {
+        "rotation_deg": 244.1,
+        "scale": 0.971,
+        "shift": [
+          1.62,
+          0.36
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.6283244448040879,
+        "edge_margin": 4.283994494660022,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 22,
+        "n_restarts_total": 28,
+        "x_star": [
+          -0.7160055053399779,
+          9.515690630992895
+        ],
+        "x_star_all": [
+          [
+            -0.7160055053399779,
+            9.515690630992895
+          ],
+          [
+            -3.206227272702768,
+            3.9426860623726157
+          ]
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "name": "task_0002",
+      "transform": {
+        "rotation_deg": 222.9,
+        "scale": 0.869,
+        "shift": [
+          2.68,
+          2.03
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.497355039051399,
+        "edge_margin": 2.799305539284581,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 27,
+        "n_restarts_total": 28,
+        "x_star": [
+          -2.200694460715419,
+          8.632485672979948
+        ],
+        "x_star_all": [
+          [
+            -2.200694460715419,
+            8.632485672979948
+          ],
+          [
+            1.6807449668104342,
+            12.476597498482938
+          ]
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "name": "task_0003",
+      "transform": {
+        "rotation_deg": 67.1,
+        "scale": 1.104,
+        "shift": [
+          -2.68,
+          -2.79
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.6381871134472004,
+        "edge_margin": 3.1178698768520654,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 25,
+        "n_restarts_total": 28,
+        "x_star": [
+          5.4093895042566675,
+          3.1178698768520654
+        ],
+        "x_star_all": [
+          [
+            5.4093895042566675,
+            3.1178698768520654
+          ],
+          [
+            7.905203193064414,
+            9.593716825447466
+          ]
+        ]
+      }
+    },
+    {
+      "index": 4,
+      "name": "task_0004",
+      "transform": {
+        "rotation_deg": 124.8,
+        "scale": 1.182,
+        "shift": [
+          -1.1,
+          0.09
+        ]
+      },
+      "verified": {
+        "boundary_min": 1.0655621014781769,
+        "edge_margin": 3.2625727609632946,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 20,
+        "n_restarts_total": 28,
+        "x_star": [
+          6.038568680734823,
+          11.737427239036705
+        ],
+        "x_star_all": [
+          [
+            6.038568680734823,
+            11.737427239036705
+          ]
+        ]
+      }
+    },
+    {
+      "index": 5,
+      "name": "task_0005",
+      "transform": {
+        "rotation_deg": 243.0,
+        "scale": 0.896,
+        "shift": [
+          -1.15,
+          0.53
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.755106212634665,
+        "edge_margin": 2.543056083467839,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 18,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.456943916532161,
+          10.59156653751518
+        ],
+        "x_star_all": [
+          [
+            7.456943916532161,
+            10.59156653751518
+          ],
+          [
+            -3.0823203082517394,
+            9.643191660343692
+          ]
+        ]
+      }
+    },
+    {
+      "index": 6,
+      "name": "task_0006",
+      "transform": {
+        "rotation_deg": 348.5,
+        "scale": 0.804,
+        "shift": [
+          1.83,
+          0.02
+        ]
+      },
+      "verified": {
+        "boundary_min": 5.0001378524379,
+        "edge_margin": 3.3005922546832664,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          3.997960087517717,
+          3.3005922546832664
+        ],
+        "x_star_all": [
+          [
+            3.997960087517717,
+            3.3005922546832664
+          ],
+          [
+            0.6506112812344065,
+            12.18633008354205
+          ],
+          [
+            8.98028545036958,
+            2.451020943478982
+          ]
+        ]
+      }
+    },
+    {
+      "index": 7,
+      "name": "task_0007",
+      "transform": {
+        "rotation_deg": 269.9,
+        "scale": 1.009,
+        "shift": [
+          0.12,
+          1.05
+        ]
+      },
+      "verified": {
+        "boundary_min": 3.0576949016885724,
+        "edge_margin": 2.3468531617848445,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          -2.6531468382151555,
+          7.911835413302182
+        ],
+        "x_star_all": [
+          [
+            -2.6531468382151555,
+            7.911835413302182
+          ],
+          [
+            -2.462412063112775,
+            1.5717588870583183
+          ],
+          [
+            7.447902711378636,
+            14.23394936906989
+          ]
+        ]
+      }
+    },
+    {
+      "index": 8,
+      "name": "task_0008",
+      "transform": {
+        "rotation_deg": 195.7,
+        "scale": 1.037,
+        "shift": [
+          2.21,
+          -1.08
+        ]
+      },
+      "verified": {
+        "boundary_min": 4.564392184251036,
+        "edge_margin": 3.543862265793246,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 23,
+        "n_restarts_total": 28,
+        "x_star": [
+          2.6032896161484596,
+          11.456137734206754
+        ],
+        "x_star_all": [
+          [
+            2.6032896161484596,
+            11.456137734206754
+          ],
+          [
+            -3.61316300139618,
+            9.493334108114059
+          ]
+        ]
+      }
+    },
+    {
+      "index": 9,
+      "name": "task_0009",
+      "transform": {
+        "rotation_deg": 323.8,
+        "scale": 1.052,
+        "shift": [
+          -2.27,
+          -2.17
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.6308609885971741,
+        "edge_margin": 2.1111779254230925,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 26,
+        "n_restarts_total": 28,
+        "x_star": [
+          -1.5924840697477358,
+          12.888822074576908
+        ],
+        "x_star_all": [
+          [
+            -1.5924840697477358,
+            12.888822074576908
+          ],
+          [
+            -2.4717198951799344,
+            0.4957487253350257
+          ]
+        ]
+      }
+    },
+    {
+      "index": 10,
+      "name": "task_0010",
+      "transform": {
+        "rotation_deg": 56.3,
+        "scale": 1.15,
+        "shift": [
+          0.09,
+          -1.5
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.5259114200985575,
+        "edge_margin": 2.0016139438322123,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 21,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.998386056167788,
+          3.279920547386897
+        ],
+        "x_star_all": [
+          [
+            7.998386056167788,
+            3.279920547386897
+          ]
+        ]
+      }
+    },
+    {
+      "index": 11,
+      "name": "task_0011",
+      "transform": {
+        "rotation_deg": 242.7,
+        "scale": 0.906,
+        "shift": [
+          -2.49,
+          -2.75
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.7300158064271205,
+        "edge_margin": 3.8014209137710395,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 18,
+        "n_restarts_total": 28,
+        "x_star": [
+          6.1985790862289605,
+          7.3077873350167835
+        ],
+        "x_star_all": [
+          [
+            6.1985790862289605,
+            7.3077873350167835
+          ],
+          [
+            -4.463185850168437,
+            6.404640152273389
+          ]
+        ]
+      }
+    },
+    {
+      "index": 12,
+      "name": "task_0012",
+      "transform": {
+        "rotation_deg": 122.9,
+        "scale": 0.945,
+        "shift": [
+          -1.06,
+          -2.81
+        ]
+      },
+      "verified": {
+        "boundary_min": 4.850730961759107,
+        "edge_margin": 4.743601382565465,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 24,
+        "n_restarts_total": 28,
+        "x_star": [
+          5.256398617434535,
+          7.881057513801883
+        ],
+        "x_star_all": [
+          [
+            5.256398617434535,
+            7.881057513801883
+          ],
+          [
+            1.8725523546462208,
+            12.763732943414714
+          ]
+        ]
+      }
+    },
+    {
+      "index": 13,
+      "name": "task_0013",
+      "transform": {
+        "rotation_deg": 49.9,
+        "scale": 0.956,
+        "shift": [
+          1.94,
+          0.88
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.621222157714463,
+        "edge_margin": 2.4742180173393002,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 21,
+        "n_restarts_total": 28,
+        "x_star": [
+          -2.5257819826606998,
+          7.194861499566499
+        ],
+        "x_star_all": [
+          [
+            -2.5257819826606998,
+            7.194861499566499
+          ],
+          [
+            8.655940219076381,
+            5.631712218520052
+          ]
+        ]
+      }
+    },
+    {
+      "index": 14,
+      "name": "task_0014",
+      "transform": {
+        "rotation_deg": 225.9,
+        "scale": 1.192,
+        "shift": [
+          -0.88,
+          -1.39
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.46647113747755853,
+        "edge_margin": 1.6151466871746605,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 19,
+        "n_restarts_total": 28,
+        "x_star": [
+          -3.3848533128253395,
+          9.89507656779881
+        ],
+        "x_star_all": [
+          [
+            -3.3848533128253395,
+            9.89507656779881
+          ]
+        ]
+      }
+    },
+    {
+      "index": 15,
+      "name": "task_0015",
+      "transform": {
+        "rotation_deg": 358.8,
+        "scale": 0.983,
+        "shift": [
+          -1.36,
+          -1.25
+        ]
+      },
+      "verified": {
+        "boundary_min": 1.5137850208191157,
+        "edge_margin": 1.168952090101401,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.842117181711222,
+          1.168952090101401
+        ],
+        "x_star_all": [
+          [
+            7.842117181711222,
+            1.168952090101401
+          ],
+          [
+            1.6629833252648294,
+            1.1017433658547056
+          ],
+          [
+            -4.306169263979099,
+            11.058935642536895
+          ]
+        ]
+      }
+    },
+    {
+      "index": 16,
+      "name": "task_0016",
+      "transform": {
+        "rotation_deg": 348.1,
+        "scale": 0.926,
+        "shift": [
+          -2.64,
+          1.09
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.910558837271843,
+        "edge_margin": 3.733122094139121,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 26,
+        "n_restarts_total": 28,
+        "x_star": [
+          -0.5563413531480317,
+          3.733122094139121
+        ],
+        "x_star_all": [
+          [
+            -0.5563413531480317,
+            3.733122094139121
+          ],
+          [
+            5.175037597540159,
+            2.714598664206197
+          ],
+          [
+            -4.340080531927978,
+            13.993858590155362
+          ]
+        ]
+      }
+    },
+    {
+      "index": 17,
+      "name": "task_0017",
+      "transform": {
+        "rotation_deg": 109.1,
+        "scale": 0.94,
+        "shift": [
+          0.86,
+          0.97
+        ]
+      },
+      "verified": {
+        "boundary_min": 5.821907645323982,
+        "edge_margin": 2.1962275820398833,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 20,
+        "n_restarts_total": 27,
+        "x_star": [
+          7.803772417960117,
+          10.64702665409033
+        ],
+        "x_star_all": [
+          [
+            7.803772417960117,
+            10.64702665409033
+          ],
+          [
+            0.8538650970843054,
+            1.9901266300374356
+          ]
+        ]
+      }
+    },
+    {
+      "index": 18,
+      "name": "task_0018",
+      "transform": {
+        "rotation_deg": 276.6,
+        "scale": 0.913,
+        "shift": [
+          -2.53,
+          2.8
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.5006022529364742,
+        "edge_margin": 1.1392492988112242,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 20,
+        "n_restarts_total": 28,
+        "x_star": [
+          -3.860750701188776,
+          3.4922657010449702
+        ],
+        "x_star_all": [
+          [
+            -3.860750701188776,
+            3.4922657010449702
+          ],
+          [
+            -4.70148307028863,
+            9.169808913350304
+          ]
+        ]
+      }
+    },
+    {
+      "index": 19,
+      "name": "task_0019",
+      "transform": {
+        "rotation_deg": 238.6,
+        "scale": 0.942,
+        "shift": [
+          -1.21,
+          -2.3
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.4192780660647815,
+        "edge_margin": 2.101842523337992,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 23,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.898157476662008,
+          7.39256615024599
+        ],
+        "x_star_all": [
+          [
+            7.898157476662008,
+            7.39256615024599
+          ],
+          [
+            -3.2260222936579046,
+            7.248514087858021
+          ]
+        ]
+      }
+    }
+  ],
+  "ranges": {
+    "agreement_atol": 1e-06,
+    "min_edge_margin": 1.0,
+    "rotation_range_deg": [
+      0.0,
+      360.0
+    ],
+    "scale_log_range": [
+      0.8,
+      1.25
+    ],
+    "shift_range": [
+      -3.0,
+      3.0
+    ]
+  },
+  "schema": "branin_affine_task_manifest/v1",
+  "seed": 0,
+  "stats": {
+    "acceptance_rate": 0.9459459459459459,
+    "accepted": 70,
+    "attempts": 74,
+    "rejected_prefilter": 4,
+    "rejected_w1": 0,
+    "rejected_w2": 0
+  },
+  "token": "dbec9afe9528cd39",
+  "train": [
+    {
+      "index": 0,
+      "name": "task_0000",
+      "transform": {
+        "rotation_deg": 260.0,
+        "scale": 0.846,
+        "shift": [
+          2.66,
+          -1.1
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.398571102222844,
+        "edge_margin": 5.712551008717584,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          0.7125510087175844,
+          6.633044497226871
+        ],
+        "x_star_all": [
+          [
+            0.7125510087175844,
+            6.633044497226871
+          ],
+          [
+            -0.04385939151367069,
+            1.3688439804776973
+          ],
+          [
+            9.967064471241784,
+            10.39880015925257
+          ]
+        ]
+      }
+    },
+    {
+      "index": 1,
+      "name": "task_0001",
+      "transform": {
+        "rotation_deg": 294.8,
+        "scale": 0.902,
+        "shift": [
+          0.89,
+          -2.66
+        ]
+      },
+      "verified": {
+        "boundary_min": 13.509312789362472,
+        "edge_margin": 3.73397660820525,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          5.165370225166276,
+          11.26602339179475
+        ],
+        "x_star_all": [
+          [
+            5.165370225166276,
+            11.26602339179475
+          ],
+          [
+            -0.6455659955350428,
+            2.3377974361237635
+          ]
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "name": "task_0002",
+      "transform": {
+        "rotation_deg": 32.4,
+        "scale": 1.201,
+        "shift": [
+          1.08,
+          2.13
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.42529541953127925,
+        "edge_margin": 2.4069670728163395,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 26,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.5930329271836605,
+          4.744535118532977
+        ],
+        "x_star_all": [
+          [
+            7.5930329271836605,
+            4.744535118532977
+          ]
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "name": "task_0003",
+      "transform": {
+        "rotation_deg": 240.6,
+        "scale": 0.803,
+        "shift": [
+          -2.3,
+          0.05
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.5922730254727373,
+        "edge_margin": 4.2355914586346675,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 21,
+        "n_restarts_total": 28,
+        "x_star": [
+          5.7644085413653325,
+          9.614487314446489
+        ],
+        "x_star_all": [
+          [
+            5.7644085413653325,
+            9.614487314446489
+          ],
+          [
+            -3.70824308124882,
+            9.1608242085699
+          ]
+        ]
+      }
+    },
+    {
+      "index": 4,
+      "name": "task_0004",
+      "transform": {
+        "rotation_deg": 72.1,
+        "scale": 1.067,
+        "shift": [
+          -0.34,
+          -0.2
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.47898032942840807,
+        "edge_margin": 2.324379831662438,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.675620168337562,
+          6.237905693320601
+        ],
+        "x_star_all": [
+          [
+            7.675620168337562,
+            6.237905693320601
+          ],
+          [
+            9.53311747277047,
+            12.683135518857606
+          ],
+          [
+            -4.538459671276822,
+            3.1377608819460194
+          ]
+        ]
+      }
+    },
+    {
+      "index": 5,
+      "name": "task_0005",
+      "transform": {
+        "rotation_deg": 314.0,
+        "scale": 1.125,
+        "shift": [
+          -0.18,
+          -1.67
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.7529087649743111,
+        "edge_margin": 1.2274977433971763,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 25,
+        "n_restarts_total": 28,
+        "x_star": [
+          -1.4069705932193406,
+          1.2274977433971763
+        ],
+        "x_star_all": [
+          [
+            -1.4069705932193406,
+            1.2274977433971763
+          ],
+          [
+            1.775351485466039,
+            14.12711783346287
+          ]
+        ]
+      }
+    },
+    {
+      "index": 6,
+      "name": "task_0006",
+      "transform": {
+        "rotation_deg": 232.1,
+        "scale": 1.14,
+        "shift": [
+          -0.83,
+          0.91
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.4007956843826541,
+        "edge_margin": 1.520522855066809,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 23,
+        "n_restarts_total": 28,
+        "x_star": [
+          -3.479477144933191,
+          11.491841365229552
+        ],
+        "x_star_all": [
+          [
+            -3.479477144933191,
+            11.491841365229552
+          ],
+          [
+            9.91610264997697,
+            10.14106622597894
+          ]
+        ]
+      }
+    },
+    {
+      "index": 7,
+      "name": "task_0007",
+      "transform": {
+        "rotation_deg": 163.2,
+        "scale": 0.929,
+        "shift": [
+          -0.53,
+          -0.47
+        ]
+      },
+      "verified": {
+        "boundary_min": 1.185491229721796,
+        "edge_margin": 3.15087283652619,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          2.8023672615381368,
+          11.84912716347381
+        ],
+        "x_star_all": [
+          [
+            2.8023672615381368,
+            11.84912716347381
+          ],
+          [
+            -2.8392845256211032,
+            13.358358676570855
+          ],
+          [
+            5.7052115472109515,
+            1.2685275556624003
+          ]
+        ]
+      }
+    },
+    {
+      "index": 8,
+      "name": "task_0008",
+      "transform": {
+        "rotation_deg": 201.5,
+        "scale": 0.863,
+        "shift": [
+          -2.79,
+          0.6
+        ]
+      },
+      "verified": {
+        "boundary_min": 13.182301870389427,
+        "edge_margin": 4.249793723618439,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          5.750206276381561,
+          6.050294517573853
+        ],
+        "x_star_all": [
+          [
+            5.750206276381561,
+            6.050294517573853
+          ],
+          [
+            -2.4577852219375056,
+            12.092485938267307
+          ]
+        ]
+      }
+    },
+    {
+      "index": 9,
+      "name": "task_0009",
+      "transform": {
+        "rotation_deg": 30.5,
+        "scale": 1.152,
+        "shift": [
+          1.56,
+          2.65
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.6863089296663034,
+        "edge_margin": 2.2481822754112866,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.751817724588713,
+          5.338810841094714
+        ],
+        "x_star_all": [
+          [
+            7.751817724588713,
+            5.338810841094714
+          ],
+          [
+            -4.331693801373072,
+            11.591099631478745
+          ]
+        ]
+      }
+    },
+    {
+      "index": 10,
+      "name": "task_0010",
+      "transform": {
+        "rotation_deg": 89.4,
+        "scale": 1.216,
+        "shift": [
+          -1.76,
+          -2.9
+        ]
+      },
+      "verified": {
+        "boundary_min": 5.484336955858462,
+        "edge_margin": 2.8985785302923848,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.101421469707615,
+          5.313600361622559
+        ],
+        "x_star_all": [
+          [
+            7.101421469707615,
+            5.313600361622559
+          ],
+          [
+            6.93824293519849,
+            12.956081507629017
+          ]
+        ]
+      }
+    },
+    {
+      "index": 11,
+      "name": "task_0011",
+      "transform": {
+        "rotation_deg": 140.3,
+        "scale": 1.108,
+        "shift": [
+          -1.92,
+          -0.45
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.8516434711528138,
+        "edge_margin": 3.041624913080117,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 13,
+        "n_restarts_total": 28,
+        "x_star": [
+          3.731064184712823,
+          11.958375086919883
+        ],
+        "x_star_all": [
+          [
+            3.731064184712823,
+            11.958375086919883
+          ]
+        ]
+      }
+    },
+    {
+      "index": 12,
+      "name": "task_0012",
+      "transform": {
+        "rotation_deg": 9.1,
+        "scale": 1.038,
+        "shift": [
+          1.48,
+          1.91
+        ]
+      },
+      "verified": {
+        "boundary_min": 1.5976625815681977,
+        "edge_margin": 4.160040878506676,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 20,
+        "n_restarts_total": 27,
+        "x_star": [
+          5.495369293012223,
+          4.160040878506676
+        ],
+        "x_star_all": [
+          [
+            5.495369293012223,
+            4.160040878506676
+          ],
+          [
+            -2.5861713168348834,
+            13.377897763309203
+          ]
+        ]
+      }
+    },
+    {
+      "index": 13,
+      "name": "task_0013",
+      "transform": {
+        "rotation_deg": 48.6,
+        "scale": 0.864,
+        "shift": [
+          -0.44,
+          2.9
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.8032502383682765,
+        "edge_margin": 4.18710957823202,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          5.81289042176798,
+          7.830387324609617
+        ],
+        "x_star_all": [
+          [
+            5.81289042176798,
+            7.830387324609617
+          ],
+          [
+            -4.2581144960938335,
+            9.472014801348964
+          ],
+          [
+            9.27331650519048,
+            12.016769054594548
+          ]
+        ]
+      }
+    },
+    {
+      "index": 14,
+      "name": "task_0014",
+      "transform": {
+        "rotation_deg": 270.3,
+        "scale": 1.035,
+        "shift": [
+          2.05,
+          1.1
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.5307078783260462,
+        "edge_margin": 4.145676063198653,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          -0.8543239368013467,
+          7.907645268240839
+        ],
+        "x_star_all": [
+          [
+            -0.8543239368013467,
+            7.907645268240839
+          ],
+          [
+            -0.6132767947061213,
+            1.4057214626648697
+          ],
+          [
+            9.46148420835951,
+            14.464845143985109
+          ]
+        ]
+      }
+    },
+    {
+      "index": 15,
+      "name": "task_0015",
+      "transform": {
+        "rotation_deg": 77.5,
+        "scale": 1.054,
+        "shift": [
+          -1.63,
+          -1.75
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.4432104234894254,
+        "edge_margin": 3.607026610563543,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 24,
+        "n_restarts_total": 28,
+        "x_star": [
+          6.392973389436457,
+          5.218243680676423
+        ],
+        "x_star_all": [
+          [
+            6.392973389436457,
+            5.218243680676423
+          ],
+          [
+            7.620536624241212,
+            11.729367309967916
+          ]
+        ]
+      }
+    },
+    {
+      "index": 16,
+      "name": "task_0016",
+      "transform": {
+        "rotation_deg": 347.7,
+        "scale": 0.946,
+        "shift": [
+          -0.82,
+          2.41
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.5074532384752501,
+        "edge_margin": 4.95131220304181,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 24,
+        "n_restarts_total": 28,
+        "x_star": [
+          1.2200372937906911,
+          4.95131220304181
+        ],
+        "x_star_all": [
+          [
+            1.2200372937906911,
+            4.95131220304181
+          ],
+          [
+            7.067797287132633,
+            3.8699393399226247
+          ]
+        ]
+      }
+    },
+    {
+      "index": 17,
+      "name": "task_0017",
+      "transform": {
+        "rotation_deg": 277.4,
+        "scale": 1.154,
+        "shift": [
+          1.71,
+          0.42
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.413501241979338,
+        "edge_margin": 3.3259299678368253,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 17,
+        "n_restarts_total": 27,
+        "x_star": [
+          -1.6740700321631747,
+          6.409176362919735
+        ],
+        "x_star_all": [
+          [
+            -1.6740700321631747,
+            6.409176362919735
+          ]
+        ]
+      }
+    },
+    {
+      "index": 18,
+      "name": "task_0018",
+      "transform": {
+        "rotation_deg": 45.8,
+        "scale": 1.164,
+        "shift": [
+          1.01,
+          -0.29
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.4005498822598703,
+        "edge_margin": 1.6091688216336397,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 17,
+        "n_restarts_total": 28,
+        "x_star": [
+          8.39083117836636,
+          3.5053103310784284
+        ],
+        "x_star_all": [
+          [
+            8.39083117836636,
+            3.5053103310784284
+          ]
+        ]
+      }
+    },
+    {
+      "index": 19,
+      "name": "task_0019",
+      "transform": {
+        "rotation_deg": 85.7,
+        "scale": 1.195,
+        "shift": [
+          0.32,
+          2.81
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.8941740557595175,
+        "edge_margin": 1.6244526558094816,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          -3.3755473441905184,
+          4.015111760952601
+        ],
+        "x_star_all": [
+          [
+            -3.3755473441905184,
+            4.015111760952601
+          ],
+          [
+            9.10378575695634,
+            10.606387255883975
+          ]
+        ]
+      }
+    },
+    {
+      "index": 20,
+      "name": "task_0020",
+      "transform": {
+        "rotation_deg": 138.5,
+        "scale": 0.898,
+        "shift": [
+          -0.65,
+          0.7
+        ]
+      },
+      "verified": {
+        "boundary_min": 1.4827510714665664,
+        "edge_margin": 2.9040936350311988,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 19,
+        "n_restarts_total": 28,
+        "x_star": [
+          4.52753540671725,
+          12.095906364968801
+        ],
+        "x_star_all": [
+          [
+            4.52753540671725,
+            12.095906364968801
+          ],
+          [
+            2.8030405411093486,
+            1.6315826253133707
+          ]
+        ]
+      }
+    },
+    {
+      "index": 21,
+      "name": "task_0021",
+      "transform": {
+        "rotation_deg": 8.4,
+        "scale": 0.827,
+        "shift": [
+          2.86,
+          1.04
+        ]
+      },
+      "verified": {
+        "boundary_min": 7.278288108078648,
+        "edge_margin": 3.483859222118552,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 21,
+        "n_restarts_total": 28,
+        "x_star": [
+          6.516140777881448,
+          4.342791288738162
+        ],
+        "x_star_all": [
+          [
+            6.516140777881448,
+            4.342791288738162
+          ],
+          [
+            0.167582924396096,
+            11.764997689444089
+          ]
+        ]
+      }
+    },
+    {
+      "index": 22,
+      "name": "task_0022",
+      "transform": {
+        "rotation_deg": 345.6,
+        "scale": 1.096,
+        "shift": [
+          2.71,
+          -2.67
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.9729846678871397,
+        "edge_margin": 3.5633211682147774,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 23,
+        "n_restarts_total": 28,
+        "x_star": [
+          0.5225642512379345,
+          11.436678831785223
+        ],
+        "x_star_all": [
+          [
+            0.5225642512379345,
+            11.436678831785223
+          ]
+        ]
+      }
+    },
+    {
+      "index": 23,
+      "name": "task_0023",
+      "transform": {
+        "rotation_deg": 194.0,
+        "scale": 0.814,
+        "shift": [
+          -1.27,
+          -0.26
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.8292546128971114,
+        "edge_margin": 3.7595319949100876,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 22,
+        "n_restarts_total": 28,
+        "x_star": [
+          -0.30567328263736315,
+          11.240468005089912
+        ],
+        "x_star_all": [
+          [
+            -0.30567328263736315,
+            11.240468005089912
+          ],
+          [
+            6.62616089822251,
+            4.5795734345356305
+          ]
+        ]
+      }
+    },
+    {
+      "index": 24,
+      "name": "task_0024",
+      "transform": {
+        "rotation_deg": 46.2,
+        "scale": 0.829,
+        "shift": [
+          1.32,
+          0.74
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.1821142387491124,
+        "edge_margin": 2.7258593996234,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 18,
+        "n_restarts_total": 28,
+        "x_star": [
+          -2.2741406003766,
+          7.604245250977951
+        ],
+        "x_star_all": [
+          [
+            -2.2741406003766,
+            7.604245250977951
+          ],
+          [
+            7.314459797775859,
+            5.625854592541984
+          ]
+        ]
+      }
+    },
+    {
+      "index": 25,
+      "name": "task_0025",
+      "transform": {
+        "rotation_deg": 324.9,
+        "scale": 1.02,
+        "shift": [
+          -2.54,
+          1.92
+        ]
+      },
+      "verified": {
+        "boundary_min": 1.8190545265113922,
+        "edge_margin": 2.430926734436535,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 24,
+        "n_restarts_total": 28,
+        "x_star": [
+          -2.569073265563465,
+          4.683373552587093
+        ],
+        "x_star_all": [
+          [
+            -2.569073265563465,
+            4.683373552587093
+          ],
+          [
+            2.791625815123361,
+            1.165154252728584
+          ]
+        ]
+      }
+    },
+    {
+      "index": 26,
+      "name": "task_0026",
+      "transform": {
+        "rotation_deg": 64.1,
+        "scale": 1.199,
+        "shift": [
+          -0.56,
+          -1.15
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.8348055968469499,
+        "edge_margin": 2.0884545819746307,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 18,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.911545418025369,
+          4.305537521564904
+        ],
+        "x_star_all": [
+          [
+            7.911545418025369,
+            4.305537521564904
+          ]
+        ]
+      }
+    },
+    {
+      "index": 27,
+      "name": "task_0027",
+      "transform": {
+        "rotation_deg": 163.0,
+        "scale": 1.219,
+        "shift": [
+          -0.9,
+          -1.41
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.5728606784079346,
+        "edge_margin": 2.590367692802893,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 22,
+        "n_restarts_total": 28,
+        "x_star": [
+          2.7142684583609133,
+          12.409632307197107
+        ],
+        "x_star_all": [
+          [
+            2.7142684583609133,
+            12.409632307197107
+          ],
+          [
+            -4.681543913319182,
+            14.415819413299685
+          ]
+        ]
+      }
+    },
+    {
+      "index": 28,
+      "name": "task_0028",
+      "transform": {
+        "rotation_deg": 180.0,
+        "scale": 0.861,
+        "shift": [
+          -0.21,
+          -1.64
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.2167674465472675,
+        "edge_margin": 4.641275,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          1.7375887252591888,
+          10.358725
+        ],
+        "x_star_all": [
+          [
+            1.7375887252591888,
+            10.358725
+          ],
+          [
+            7.147411274740811,
+            1.7487249999999994
+          ],
+          [
+            -3.6722338242224346,
+            10.186525000000001
+          ]
+        ]
+      }
+    },
+    {
+      "index": 29,
+      "name": "task_0029",
+      "transform": {
+        "rotation_deg": 132.8,
+        "scale": 1.137,
+        "shift": [
+          0.74,
+          -1.41
+        ]
+      },
+      "verified": {
+        "boundary_min": 1.3274170284630937,
+        "edge_margin": 2.8966854903366297,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 17,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.10331450966337,
+          10.661691106811377
+        ],
+        "x_star_all": [
+          [
+            7.10331450966337,
+            10.661691106811377
+          ]
+        ]
+      }
+    },
+    {
+      "index": 30,
+      "name": "task_0030",
+      "transform": {
+        "rotation_deg": 221.2,
+        "scale": 1.005,
+        "shift": [
+          2.4,
+          -0.94
+        ]
+      },
+      "verified": {
+        "boundary_min": 3.8351136624940914,
+        "edge_margin": 4.913698631727156,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 25,
+        "n_restarts_total": 28,
+        "x_star": [
+          0.9559817113453715,
+          10.086301368272844
+        ],
+        "x_star_all": [
+          [
+            0.9559817113453715,
+            10.086301368272844
+          ],
+          [
+            -3.6628218191496416,
+            5.775704694084001
+          ]
+        ]
+      }
+    },
+    {
+      "index": 31,
+      "name": "task_0031",
+      "transform": {
+        "rotation_deg": 12.7,
+        "scale": 1.134,
+        "shift": [
+          -2.67,
+          0.48
+        ]
+      },
+      "verified": {
+        "boundary_min": 4.698986748419171,
+        "edge_margin": 2.3597641356623296,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 25,
+        "n_restarts_total": 28,
+        "x_star": [
+          1.8423875712002555,
+          2.3597641356623296
+        ],
+        "x_star_all": [
+          [
+            1.8423875712002555,
+            2.3597641356623296
+          ],
+          [
+            8.74333898318412,
+            4.147448626356077
+          ]
+        ]
+      }
+    },
+    {
+      "index": 32,
+      "name": "task_0032",
+      "transform": {
+        "rotation_deg": 66.2,
+        "scale": 1.106,
+        "shift": [
+          -0.57,
+          -1.2
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.41237933111360725,
+        "edge_margin": 2.4962289859774067,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 17,
+        "n_restarts_total": 28,
+        "x_star": [
+          7.503771014022593,
+          4.6172289939270765
+        ],
+        "x_star_all": [
+          [
+            7.503771014022593,
+            4.6172289939270765
+          ]
+        ]
+      }
+    },
+    {
+      "index": 33,
+      "name": "task_0033",
+      "transform": {
+        "rotation_deg": 187.1,
+        "scale": 0.841,
+        "shift": [
+          -2.69,
+          0.95
+        ]
+      },
+      "verified": {
+        "boundary_min": 7.173999357196875,
+        "edge_margin": 4.985446587786022,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 25,
+        "n_restarts_total": 28,
+        "x_star": [
+          5.014553412213978,
+          5.051455235168742
+        ],
+        "x_star_all": [
+          [
+            5.014553412213978,
+            5.051455235168742
+          ],
+          [
+            -1.2685745922779363,
+            12.74383699641779
+          ]
+        ]
+      }
+    },
+    {
+      "index": 34,
+      "name": "task_0034",
+      "transform": {
+        "rotation_deg": 359.7,
+        "scale": 0.964,
+        "shift": [
+          -0.02,
+          -2.16
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.48816899495292887,
+        "edge_margin": 2.0656808966000377,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          -2.9343191033999623,
+          9.97151266662684
+        ],
+        "x_star_all": [
+          [
+            -2.9343191033999623,
+            9.97151266662684
+          ],
+          [
+            9.130030915876135,
+            0.46101379871099546
+          ],
+          [
+            3.072113813657296,
+            0.2999306254636691
+          ]
+        ]
+      }
+    },
+    {
+      "index": 35,
+      "name": "task_0035",
+      "transform": {
+        "rotation_deg": 273.5,
+        "scale": 0.943,
+        "shift": [
+          -0.7,
+          -1.24
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.098943395096062,
+        "edge_margin": 3.155010150825767,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 24,
+        "n_restarts_total": 28,
+        "x_star": [
+          5.969646758104388,
+          11.844989849174233
+        ],
+        "x_star_all": [
+          [
+            5.969646758104388,
+            11.844989849174233
+          ],
+          [
+            -3.081049123721556,
+            5.355309777633253
+          ]
+        ]
+      }
+    },
+    {
+      "index": 36,
+      "name": "task_0036",
+      "transform": {
+        "rotation_deg": 335.0,
+        "scale": 1.194,
+        "shift": [
+          -1.71,
+          0.39
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.6642949609629856,
+        "edge_margin": 1.9121112906289728,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 20,
+        "n_restarts_total": 27,
+        "x_star": [
+          -1.1522797994522116,
+          1.9121112906289728
+        ],
+        "x_star_all": [
+          [
+            -1.1522797994522116,
+            1.9121112906289728
+          ]
+        ]
+      }
+    },
+    {
+      "index": 37,
+      "name": "task_0037",
+      "transform": {
+        "rotation_deg": 59.8,
+        "scale": 1.106,
+        "shift": [
+          2.01,
+          -0.29
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.4157853885290397,
+        "edge_margin": 1.806991128778991,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 22,
+        "n_restarts_total": 28,
+        "x_star": [
+          -3.193008871221009,
+          4.473793462182685
+        ],
+        "x_star_all": [
+          [
+            -3.193008871221009,
+            4.473793462182685
+          ],
+          [
+            9.861458135288167,
+            4.91641385557546
+          ]
+        ]
+      }
+    },
+    {
+      "index": 38,
+      "name": "task_0038",
+      "transform": {
+        "rotation_deg": 307.9,
+        "scale": 1.17,
+        "shift": [
+          0.2,
+          1.01
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.757078995393127,
+        "edge_margin": 3.337253138147455,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 21,
+        "n_restarts_total": 28,
+        "x_star": [
+          -1.6627468618525452,
+          4.1623844547785
+        ],
+        "x_star_all": [
+          [
+            -1.6627468618525452,
+            4.1623844547785
+          ]
+        ]
+      }
+    },
+    {
+      "index": 39,
+      "name": "task_0039",
+      "transform": {
+        "rotation_deg": 90.2,
+        "scale": 0.974,
+        "shift": [
+          -1.9,
+          2.83
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.8405085777634831,
+        "edge_margin": 4.0273281139269095,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 24,
+        "n_restarts_total": 28,
+        "x_star": [
+          5.686937647836304,
+          10.97267188607309
+        ],
+        "x_star_all": [
+          [
+            5.686937647836304,
+            10.97267188607309
+          ],
+          [
+            -4.031640845717757,
+            4.8188877361487625
+          ]
+        ]
+      }
+    },
+    {
+      "index": 40,
+      "name": "task_0040",
+      "transform": {
+        "rotation_deg": 74.8,
+        "scale": 0.819,
+        "shift": [
+          1.91,
+          2.6
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.43018621287388115,
+        "edge_margin": 4.424650108060585,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          -0.5753498919394149,
+          6.666525433643571
+        ],
+        "x_star_all": [
+          [
+            -0.5753498919394149,
+            6.666525433643571
+          ],
+          [
+            8.677342034442844,
+            9.485102199704222
+          ],
+          [
+            9.868479169302312,
+            14.493954926294933
+          ]
+        ]
+      }
+    },
+    {
+      "index": 41,
+      "name": "task_0041",
+      "transform": {
+        "rotation_deg": 343.7,
+        "scale": 1.08,
+        "shift": [
+          0.38,
+          1.01
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.40870394517259,
+        "edge_margin": 2.8993391429491533,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 21,
+        "n_restarts_total": 28,
+        "x_star": [
+          1.96126610770451,
+          2.8993391429491533
+        ],
+        "x_star_all": [
+          [
+            1.96126610770451,
+            2.8993391429491533
+          ],
+          [
+            8.534975385786442,
+            1.2020976689738045
+          ]
+        ]
+      }
+    },
+    {
+      "index": 42,
+      "name": "task_0042",
+      "transform": {
+        "rotation_deg": 136.6,
+        "scale": 1.019,
+        "shift": [
+          -2.35,
+          -1.15
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.40993433128221035,
+        "edge_margin": 4.3323105687237895,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 25,
+        "n_restarts_total": 28,
+        "x_star": [
+          3.3332207509564116,
+          10.66768943127621
+        ],
+        "x_star_all": [
+          [
+            3.3332207509564116,
+            10.66768943127621
+          ],
+          [
+            -1.458749843606267,
+            14.918736530865297
+          ]
+        ]
+      }
+    },
+    {
+      "index": 43,
+      "name": "task_0043",
+      "transform": {
+        "rotation_deg": 185.5,
+        "scale": 0.819,
+        "shift": [
+          -1.41,
+          -2.76
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.419065406747853,
+        "edge_margin": 5.156804417879758,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 28,
+        "n_restarts_total": 28,
+        "x_star": [
+          0.15680441787975785,
+          8.9492105375287
+        ],
+        "x_star_all": [
+          [
+            0.15680441787975785,
+            8.9492105375287
+          ],
+          [
+            6.06401906234251,
+            1.2901310879498422
+          ],
+          [
+            -4.949733979179547,
+            8.292949225187819
+          ]
+        ]
+      }
+    },
+    {
+      "index": 44,
+      "name": "task_0044",
+      "transform": {
+        "rotation_deg": 204.7,
+        "scale": 1.021,
+        "shift": [
+          1.71,
+          0.67
+        ]
+      },
+      "verified": {
+        "boundary_min": 2.079035403690731,
+        "edge_margin": 2.257089266710878,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 23,
+        "n_restarts_total": 28,
+        "x_star": [
+          1.3856611666681808,
+          12.742910733289122
+        ],
+        "x_star_all": [
+          [
+            1.3856611666681808,
+            12.742910733289122
+          ],
+          [
+            -4.357210439232298,
+            9.876720843549434
+          ]
+        ]
+      }
+    },
+    {
+      "index": 45,
+      "name": "task_0045",
+      "transform": {
+        "rotation_deg": 322.7,
+        "scale": 0.842,
+        "shift": [
+          1.83,
+          -2.86
+        ]
+      },
+      "verified": {
+        "boundary_min": 1.404635242860886,
+        "edge_margin": 4.283180263170927,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 20,
+        "n_restarts_total": 28,
+        "x_star": [
+          2.987731817595031,
+          10.716819736829073
+        ],
+        "x_star_all": [
+          [
+            2.987731817595031,
+            10.716819736829073
+          ],
+          [
+            2.0937158231451813,
+            0.8129865263936549
+          ]
+        ]
+      }
+    },
+    {
+      "index": 46,
+      "name": "task_0046",
+      "transform": {
+        "rotation_deg": 137.6,
+        "scale": 1.14,
+        "shift": [
+          2.91,
+          1.52
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.5866764244123814,
+        "edge_margin": 1.0881954612461016,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 22,
+        "n_restarts_total": 28,
+        "x_star": [
+          8.886364397075774,
+          13.911804538753898
+        ],
+        "x_star_all": [
+          [
+            8.886364397075774,
+            13.911804538753898
+          ],
+          [
+            6.488748169322212,
+            0.6634994417599565
+          ]
+        ]
+      }
+    },
+    {
+      "index": 47,
+      "name": "task_0047",
+      "transform": {
+        "rotation_deg": 219.3,
+        "scale": 0.821,
+        "shift": [
+          -0.65,
+          -0.59
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.49269152538280103,
+        "edge_margin": 3.7253517872115816,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 22,
+        "n_restarts_total": 28,
+        "x_star": [
+          -1.2746482127884184,
+          9.895929859016487
+        ],
+        "x_star_all": [
+          [
+            -1.2746482127884184,
+            9.895929859016487
+          ],
+          [
+            7.917259710323478,
+            6.8099938886030635
+          ]
+        ]
+      }
+    },
+    {
+      "index": 48,
+      "name": "task_0048",
+      "transform": {
+        "rotation_deg": 268.3,
+        "scale": 1.011,
+        "shift": [
+          -2.63,
+          -1.8
+        ]
+      },
+      "verified": {
+        "boundary_min": 0.557684428488944,
+        "edge_margin": 3.7420747661038174,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 19,
+        "n_restarts_total": 28,
+        "x_star": [
+          4.864606091924585,
+          11.257925233896183
+        ],
+        "x_star_all": [
+          [
+            4.864606091924585,
+            11.257925233896183
+          ]
+        ]
+      }
+    },
+    {
+      "index": 49,
+      "name": "task_0049",
+      "transform": {
+        "rotation_deg": 121.7,
+        "scale": 0.81,
+        "shift": [
+          1.9,
+          2.24
+        ]
+      },
+      "verified": {
+        "boundary_min": 11.224074080614573,
+        "edge_margin": 3.8196639609045953,
+        "f_star": 0.39788735772973816,
+        "matches_canonical": true,
+        "n_restarts_agreeing": 21,
+        "n_restarts_total": 28,
+        "x_star": [
+          3.510517906675921,
+          3.8196639609045953
+        ],
+        "x_star_all": [
+          [
+            3.510517906675921,
+            3.8196639609045953
+          ],
+          [
+            7.727762929551831,
+            12.406085462743839
+          ]
+        ]
+      }
+    }
+  ]
+}

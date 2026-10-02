@@ -37,6 +37,7 @@ zero on the main panel's full-range y-axis.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -51,9 +52,8 @@ for _p in (BOLT_ROOT, PKG_ROOT):
         sys.path.insert(0, str(_p))
 
 import style  # noqa: E402
-from core.global_optimum import load_verified_optima  # noqa: E402
-from core.regret import VERIFIED_OPTIMA_HELDOUT, full_trajectory_table, regret_table, trajectory_path  # noqa: E402
-from synthetic_experiment.branin import BRANIN_BOUNDS, branin  # noqa: E402
+from core.regret import full_trajectory_table, regret_table, trajectory_path  # noqa: E402
+from synthetic_experiment.branin import BRANIN_BOUNDS, DEFAULT_PARAMETERS  # noqa: E402
 from synthetic_experiment.config import load_config  # noqa: E402
 
 MILESTONE = 50
@@ -70,17 +70,17 @@ INSET_YLIM = (0.0, 0.045)
 INSET_BOUNDS = (0.40, 0.38, 0.56, 0.58)  # (x0, y0, width, height), axes-fraction
 
 # generate_init_pools: which held-out tasks to show (index into
-# heldout_task_values, fixed/deterministic -- first, middle, last of the 20
-# tasks, i.e. t = 0.0, 0.5, 0.95 -- not selected by any downstream result).
+# heldout_tasks, fixed/deterministic -- first, middle, last of the 20 tasks,
+# not selected by any downstream result).
 TASK_INDICES_FOR_INIT_POOLS = (0, 10, 19)
-# Contour window: each panel's colormap spans [local min, local min + 20] of
-# the RAW (minimize-convention) Branin value. 20 = 2*s*(1-t) at t=0 (s=10),
-# i.e. the full well-to-pass height along the valley at the most extreme
-# task in the family -- a window this wide resolves the 3-well structure at
-# low t and still correctly shows it flattening out at high t (at t=0.95 the
-# well-to-pass height is only 2*s*(1-t)=1, so the valley looks nearly flat --
-# that is the real structure, not a plotting artifact).
-CONTOUR_WINDOW = 20.0
+# Contour window: each panel's colormap spans [local min, local min + WINDOW]
+# of the RAW (minimize-convention) Branin value. An input-space transform
+# relabels WHERE the canonical landscape sits but never changes its values,
+# so every task shares the exact same well-to-pass height along the valley,
+# 2*s*(1-t) at the family's fixed canonical t -- unlike the retired scalar-t
+# family, this is now a single constant that is correct for every task, not
+# a per-task-varying quantity.
+CONTOUR_WINDOW = 2.0 * DEFAULT_PARAMETERS.s * (1.0 - DEFAULT_PARAMETERS.t)
 
 # (method_key, arm, uses_h3_overlay_only) -- method_key doubles as the
 # style.ARM_COLOR lookup key (see style.py's Experiment-C purple-family
@@ -126,14 +126,14 @@ def generate_trajectory(
     h1_cfg = load_config(h1_config)
     h3_cfg = load_config(h3_config) if h3_config else None
     for cfg, name in ((h0_cfg, "h0"), (h1_cfg, "h1"), *([(h3_cfg, "h3")] if h3_cfg else [])):
-        if cfg.heldout_task_values != baselines_cfg.heldout_task_values:
-            raise ValueError(f"{name} config's held-out tasks differ from the baselines config")
+        if cfg.manifest.token != baselines_cfg.manifest.token:
+            raise ValueError(f"{name} config's task manifest differs from the baselines config")
 
     methods = list(MAIN_METHODS) + (list(SECONDARY_METHODS) if include_h3 else [])
     rows = []
     for method in methods:
         run_dir, arm, milestone = _resolve(method, baselines_cfg, h0_cfg, h1_cfg, h3_cfg)
-        t = full_trajectory_table(run_dir, arm, milestone, baselines_cfg.heldout_task_values,
+        t = full_trajectory_table(run_dir, arm, milestone, baselines_cfg.heldout_tasks,
                                   baselines_cfg.init_size, baselines_cfg.oracle_budget)
         t.insert(0, "method", method)
         rows.append(t)
@@ -196,7 +196,7 @@ def generate_table(
     rows = []
     for method in methods:
         run_dir, arm, milestone = _resolve(method, baselines_cfg, h0_cfg, h1_cfg, h3_cfg)
-        t = regret_table(run_dir, arm, milestone, baselines_cfg.heldout_task_values,
+        t = regret_table(run_dir, arm, milestone, baselines_cfg.heldout_tasks,
                          baselines_cfg.init_size, baselines_cfg.oracle_budget, list(CHECKPOINTS))
         agg = t.groupby("b").simple_regret.mean()
         rows.append({
@@ -231,13 +231,11 @@ def generate_table(
     return csv_path, tex_path
 
 
-def _init_pool(run_dir: Path, arm: str, milestone: int | None, task_index: int, init_size: int) -> np.ndarray:
+def _init_pool(run_dir: Path, arm: str, milestone: int | None, task, init_size: int) -> np.ndarray:
     """The first `init_size` (x1, x2) points evaluated for one held-out task
-    -- rows 0..init_size-1 of its trajectory CSV, before any BO acquisition.
-    Same train_x parsing convention as core/initializer_baselines.py's
-    _load_train_points (own trusted CSV, a JSON-ish "[a, b]" literal)."""
-    frame = pd.read_csv(trajectory_path(run_dir, arm, milestone, task_index)).head(init_size)
-    return np.array([eval(v) for v in frame.train_x], dtype=float)  # noqa: S307
+    -- rows 0..init_size-1 of its trajectory CSV, before any BO acquisition."""
+    frame = pd.read_csv(trajectory_path(run_dir, arm, milestone, task)).head(init_size)
+    return np.array([json.loads(v) for v in frame.train_x], dtype=float)
 
 
 def generate_init_pools(
@@ -272,12 +270,11 @@ def generate_init_pools(
     h1_cfg = load_config(h1_config)
     h3_cfg = load_config(h3_config) if h3_config else None
     for cfg, name in ((h0_cfg, "h0"), (h1_cfg, "h1"), *([(h3_cfg, "h3")] if h3_cfg else [])):
-        if cfg.heldout_task_values != baselines_cfg.heldout_task_values:
-            raise ValueError(f"{name} config's held-out tasks differ from the baselines config")
+        if cfg.manifest.token != baselines_cfg.manifest.token:
+            raise ValueError(f"{name} config's task manifest differs from the baselines config")
 
     if methods is None:
         methods = list(MAIN_METHODS) + (list(SECONDARY_METHODS) if include_h3 else [])
-    verified = load_verified_optima(VERIFIED_OPTIMA_HELDOUT)
 
     x1_grid = np.linspace(*BRANIN_BOUNDS[0], 220)
     x2_grid = np.linspace(*BRANIN_BOUNDS[1], 220)
@@ -295,8 +292,8 @@ def generate_init_pools(
     )
     axes_flat = axes.ravel()
     for ax, task_index in zip(axes_flat, task_indices):
-        task_t = baselines_cfg.heldout_task_values[task_index]
-        z = branin(grid, task_t)
+        task = baselines_cfg.heldout_tasks[task_index]
+        z = task.oracle(maximize=False).raw(grid)
         z_min = float(z.min())
         levels = np.linspace(z_min, z_min + CONTOUR_WINDOW, 25)
         ax.contourf(X1, X2, z, levels=levels, cmap="Greys", extend="max")
@@ -307,13 +304,13 @@ def generate_init_pools(
         # illustrated -- so the star must sit behind them, not occlude them.
         # Sized larger than a method marker so its points still show past the
         # edge of whatever sits on top of its center.
-        opt = verified[task_t]
+        opt = task.verified
         ax.scatter([opt.x_star[0]], [opt.x_star[1]], marker="*", s=260, color="#FFD700",
                   edgecolor="black", linewidth=0.6, zorder=3, label="Global optimum (verified)")
 
         for method in methods:
             run_dir, arm, milestone = _resolve(method, baselines_cfg, h0_cfg, h1_cfg, h3_cfg)
-            pts = _init_pool(run_dir, arm, milestone, task_index, baselines_cfg.init_size)
+            pts = _init_pool(run_dir, arm, milestone, task, baselines_cfg.init_size)
             marker = style.ABLATION_MARKER.get(method, "o")
             ax.scatter(pts[:, 0], pts[:, 1], color=style.arm_color(method), label=LEGEND_LABEL[method],
                       marker=marker, s=32 if marker != "o" else 26,
@@ -322,7 +319,7 @@ def generate_init_pools(
         ax.set_xlim(*BRANIN_BOUNDS[0])
         ax.set_ylim(*BRANIN_BOUNDS[1])
         ax.set_aspect("equal", adjustable="box")
-        ax.set_title(f"t = {task_t:g}")
+        ax.set_title(f"Task {task_index}")
         ax.set_xlabel("x1")
         if ax.get_subplotspec().is_first_col():
             ax.set_ylabel("x2")

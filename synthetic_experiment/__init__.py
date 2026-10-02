@@ -2,16 +2,24 @@
 
 from .branin import (
     BRANIN_BOUNDS,
+    CANONICAL_F_STAR,
+    IDENTITY_TRANSFORM,
+    TRANSFORM_PIVOT,
     BraninParameters,
     BraninTask,
+    BraninTaskTransform,
     branin,
-    sample_branin_tasks,
+    canonical_global_minimizers,
 )
 
 __all__ = [
     "BRANIN_BOUNDS",
+    "CANONICAL_F_STAR",
+    "IDENTITY_TRANSFORM",
+    "TRANSFORM_PIVOT",
     "BraninParameters",
     "BraninTask",
+    "BraninTaskTransform",
     "branin",
-    "sample_branin_tasks",
+    "canonical_global_minimizers",
 ]

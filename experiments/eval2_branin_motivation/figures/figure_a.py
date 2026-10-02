@@ -46,7 +46,7 @@ PANEL_TITLE = {0: "Initialization (0 BO calls)", 10: "After 10 BO calls", 50: "A
 
 
 def _collect_scaling(
-    baselines_cfg, orpt_cfg, milestones: list[int], heldout_task_values: list[float],
+    baselines_cfg, orpt_cfg, milestones: list[int], heldout_tasks,
     init_size: int, oracle_budget: int,
 ) -> pd.DataFrame:
     """One row per (method, milestone, b, task_index). STBO is evaluated
@@ -57,7 +57,7 @@ def _collect_scaling(
     rows = []
     for method in MAIN_METHODS:
         if method == "STBO":
-            t = regret_table(baselines_cfg.run_dir, "STBO", None, heldout_task_values,
+            t = regret_table(baselines_cfg.run_dir, "STBO", None, heldout_tasks,
                              init_size, oracle_budget, list(PANEL_B))
             for milestone in milestones:
                 broadcast = t.copy()
@@ -66,7 +66,7 @@ def _collect_scaling(
             continue
         cfg, run_dir = (orpt_cfg, orpt_cfg.run_dir) if method == "ORPT" else (baselines_cfg, baselines_cfg.run_dir)
         for milestone in milestones:
-            t = regret_table(run_dir, method, milestone, heldout_task_values,
+            t = regret_table(run_dir, method, milestone, heldout_tasks,
                              init_size, oracle_budget, list(PANEL_B))
             rows.append(t)
     data = pd.concat(rows, ignore_index=True)
@@ -79,11 +79,11 @@ def generate_task_scaling(
 ) -> tuple[Path, Path]:
     baselines_cfg = load_config(baselines_config)
     orpt_cfg = load_config(orpt_config)
-    if baselines_cfg.heldout_task_values != orpt_cfg.heldout_task_values:
-        raise ValueError("baselines and ORPT configs must share the same held-out task set")
+    if baselines_cfg.manifest.token != orpt_cfg.manifest.token:
+        raise ValueError("baselines and ORPT configs must share the same task manifest")
     milestones = baselines_cfg.milestones
     data = _collect_scaling(
-        baselines_cfg, orpt_cfg, milestones, baselines_cfg.heldout_task_values,
+        baselines_cfg, orpt_cfg, milestones, baselines_cfg.heldout_tasks,
         baselines_cfg.init_size, baselines_cfg.oracle_budget,
     )
 
@@ -138,13 +138,13 @@ def generate_trajectory_t50(
     rows = []
     for method in MAIN_METHODS:
         if method == "STBO":
-            t = full_trajectory_table(baselines_cfg.run_dir, "STBO", None, baselines_cfg.heldout_task_values,
+            t = full_trajectory_table(baselines_cfg.run_dir, "STBO", None, baselines_cfg.heldout_tasks,
                                       baselines_cfg.init_size, baselines_cfg.oracle_budget)
         elif method == "ORPT":
-            t = full_trajectory_table(orpt_cfg.run_dir, "ORPT", milestone, orpt_cfg.heldout_task_values,
+            t = full_trajectory_table(orpt_cfg.run_dir, "ORPT", milestone, orpt_cfg.heldout_tasks,
                                       orpt_cfg.init_size, orpt_cfg.oracle_budget)
         else:
-            t = full_trajectory_table(baselines_cfg.run_dir, method, milestone, baselines_cfg.heldout_task_values,
+            t = full_trajectory_table(baselines_cfg.run_dir, method, milestone, baselines_cfg.heldout_tasks,
                                       baselines_cfg.init_size, baselines_cfg.oracle_budget)
         t.insert(0, "method", method)
         rows.append(t)

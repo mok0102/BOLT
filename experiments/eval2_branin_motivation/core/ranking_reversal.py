@@ -51,7 +51,7 @@ from synthetic_experiment.mi_orpt.background_sampler import ReferenceAlignedDist
 from synthetic_experiment.mi_orpt.candidate_bank import EligibleCandidate, build_eligible_bank  # noqa: E402
 from synthetic_experiment.mi_orpt.likelihood import score_sequences  # noqa: E402
 from synthetic_experiment.mi_orpt.one_step_evaluator import run_candidates_one_step  # noqa: E402
-from synthetic_experiment.task_splits import task_name  # noqa: E402
+from synthetic_experiment.task_splits import TaskRecord  # noqa: E402
 
 HORIZONS = (1, 2, 3, 5, 10, 20, 50)
 TRAIN_HORIZON = 1  # the H the main synthetic ORPT experiments train on
@@ -69,7 +69,7 @@ def _delta0(c_i: EligibleCandidate, c_j: EligibleCandidate) -> float:
 
 
 def collect_pairs_for_task(
-    cfg: ExperimentConfig, task_name_str: str, task_t: float, bank: list[EligibleCandidate],
+    cfg: ExperimentConfig, task: TaskRecord, bank: list[EligibleCandidate],
     reference_checkpoint: Path, n_candidates: int, horizons: tuple[int, ...],
     rng: random.Random, work_dir: Path,
 ) -> list[dict]:
@@ -83,7 +83,7 @@ def collect_pairs_for_task(
         return []
     candidates = rng.sample(bank, n_candidates)
     reserved = {c.seq for c in candidates}
-    likelihoods = score_sequences(cfg, reference_checkpoint, task_t, [c.seq for c in bank])
+    likelihoods = score_sequences(cfg, reference_checkpoint, task.transform, [c.seq for c in bank])
     q = ReferenceAlignedDistribution(bank, likelihoods, cfg.mi_tau_q)
 
     # Background size = init_size - 1, exactly matching
@@ -106,7 +106,7 @@ def collect_pairs_for_task(
     for h in horizons:
         h_cfg = dataclasses.replace(cfg, mi_bo_steps=h)
         utilities_by_h[h] = run_candidates_one_step(
-            h_cfg, task_t, backgrounds, candidates, work_dir / f"h{h}", seeds,
+            h_cfg, task, backgrounds, candidates, work_dir / f"h{h}", seeds,
         )
 
     rows = []
@@ -114,7 +114,7 @@ def collect_pairs_for_task(
         for j in range(i):
             delta0 = _delta0(candidates[i], candidates[j])
             row = {
-                "task": task_name_str, "task_t": task_t,
+                "task": task.name, "task_split": task.split, "task_index": task.index,
                 "candidate_i": candidates[i].seq, "candidate_j": candidates[j].seq,
                 "y_i": candidates[i].y, "y_j": candidates[j].y, "delta0": delta0,
             }
@@ -138,12 +138,12 @@ def collect_all(
     rng = random.Random(seed)
     all_rows = []
     for index in task_indices:
-        name = task_name(index)
-        task_t = cfg.train_task_values[index]
+        task = cfg.train_tasks[index]
+        name = task.name
         bank = build_eligible_bank(cfg.trajectories_dir / f"{name}.csv")
-        print(f"[ranking_reversal] {name} t={task_t:.3f} bank={len(bank)}", flush=True)
+        print(f"[ranking_reversal] {name} bank={len(bank)}", flush=True)
         rows = collect_pairs_for_task(
-            cfg, name, task_t, bank, reference_checkpoint, n_candidates, horizons,
+            cfg, task, bank, reference_checkpoint, n_candidates, horizons,
             random.Random(rng.randrange(2**31 - 1)), work_dir / name,
         )
         print(f"[ranking_reversal] {name}: {len(rows)} pairs", flush=True)
