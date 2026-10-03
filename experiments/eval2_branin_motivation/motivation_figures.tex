@@ -1,0 +1,128 @@
+% Figure inclusions and captions for the Branin motivational experiments
+% (impl_plan/motivational_exp.txt), affine-transform task family
+% (see motivation_results.md's "Why the task family changed"). Captions
+% describe what was measured, not a claimed conclusion. Paths are relative
+% to experiments/eval2_branin_motivation/results/figures/.
+
+% ============================================================
+% Experiment A: where should cross-task knowledge enter BO?
+% ============================================================
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/motivation_A_task_scaling.pdf}
+  \caption{Simple regret to the numerically verified global optimum
+  (mean $\pm$ s.e.m.\ over 20 held-out Branin tasks) as a function of the
+  number of completed training tasks, measured immediately after
+  initialization (left), after 10 BO calls (center), and after the full
+  50-call BO budget (right), for six cross-task transfer interfaces: a
+  single-task baseline with no transfer (STBO), two cross-task interfaces
+  that leave initialization uniform and vary only the surrogate/acquisition
+  (MTBO, a shared GP; POGPE/SGPE, product-of-experts over frozen per-task
+  GPs), and two interfaces that instead learn a task-conditioned
+  initialization (BOLT, supervised imitation of high-performing standalone
+  candidates; ORPT, trained on downstream rollout outcomes at horizon
+  $H=1$). STBO has no training-task dependence and is plotted as a
+  reference. The $y$-axis is logarithmic: POGPE and SGPE remain 1-2 orders
+  of magnitude worse than the other four methods throughout, which a
+  linear axis cannot show without compressing the latter group into
+  visual indistinguishability. Unlike the retired scalar-$t$ task family,
+  BOLT and ORPT no longer start ahead of the shared uniform initialization
+  at 0 BO calls on this family -- see motivation\_results.md's Experiment
+  A section.}
+  \label{fig:motivation-a-scaling}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.48\textwidth]{figures/motivation_A_trajectory_T50.pdf}
+  \caption{Simple regret to the verified global optimum across the full
+  50-call BO budget, for all six methods, at the final training checkpoint
+  ($T=50$ completed training tasks). Mean over 20 held-out tasks.}
+  \label{fig:motivation-a-trajectory}
+\end{figure}
+
+% ============================================================
+% Experiment B: does standalone quality agree with downstream utility?
+% ============================================================
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.48\textwidth]{figures/motivation_B_reversal.pdf}
+  \caption{Rate at which the sign of the standalone objective-value
+  difference between two candidates ($\Delta_0$) disagrees with the sign of
+  their matched-intervention downstream-utility difference ($\Delta_h$,
+  averaged over $M=3$ shared background pools) at rollout horizon $h$, for
+  450 candidate pairs drawn from 10 training-task trajectories (10
+  candidates/task). Shown with and without the $z$-score reliability
+  filter used by the real preference-construction pipeline. The dotted line
+  marks $h=1$, the horizon the main synthetic ORPT experiments train on.
+  Near-tied $\Delta_0$ or $\Delta_h$ values are excluded from the rate
+  rather than counted toward either outcome. Error bars are 95\% normal-
+  approximation confidence intervals. The filtered series' $h=50$ point
+  (n=9) has a wide enough interval to be uninformative on its own -- see
+  motivation\_results.md.}
+  \label{fig:motivation-b-reversal}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.48\textwidth]{figures/motivation_B_horizon_agreement.pdf}
+  \caption{Rate at which the sign of $\Delta_{h}$ at evaluation horizon $h$
+  agrees with the sign of $\Delta_{H=1}$ (the training horizon), for the
+  same 450 candidate pairs as Figure~\ref{fig:motivation-b-reversal}, with
+  and without the reliability filter. Error bars are 95\% normal-
+  approximation confidence intervals; the filtered series' sample size
+  shrinks at long horizons as more pairs' $\Delta_h$ falls below the
+  reliability threshold. The unfiltered (better-powered) series shows a
+  monotonic decline from short to long horizons, then a flat plateau near
+  chance from $h=10$ through $h=50$.}
+  \label{fig:motivation-b-agreement}
+\end{figure}
+
+% ============================================================
+% Experiment C: what should a learned initializer optimize?
+% ============================================================
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.48\textwidth]{figures/motivation_C_initializer_objective.pdf}
+  \caption{Simple regret to the verified global optimum across the 50-call
+  BO budget at $T=50$, mean over 20 held-out tasks, for six initializer
+  variants that share the same base model, training tasks, held-out tasks,
+  proposal budget, downstream BO procedure, and decoding protocol, varying
+  only the initializer: task-independent uniform sampling (Random);
+  task-independent reuse of the highest-scoring points observed across all
+  50 training tasks (Prior-best reuse); a $k$-nearest-neighbor regression
+  from task context (the affine transform's own shift/rotation/scale) to
+  each training task's best observed point (Context-to-optimum
+  regression); supervised imitation of each task's own high-performing
+  candidates (BOLT, i.e.\ Top-K SFT); and two preference-tuned variants
+  trained with the same pipeline, differing only in whether preferences
+  are labeled by standalone objective value (H=0) or by downstream rollout
+  outcome (ORPT, H=1). ORPT (H=3) is shown as a secondary variant. Inset:
+  the same curves restricted to oracle calls 38--50, the region of the
+  main panel where every method has converged close enough to be
+  indistinguishable at the main panel's scale.}
+  \label{fig:motivation-c}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/motivation_C_init_pools_orpt_variants.pdf}
+  \caption{Each of BOLT, ORPT (H=0/H=1/H=3), and Random's raw
+  \texttt{init\_size} proposed points, plotted directly in the 2D Branin
+  input space against that task's own contour and numerically verified
+  global optimum, for three held-out tasks (first, middle, and last of the
+  20, fixed and deterministic). Diagnostic, not additional statistical
+  evidence. ORPT's horizon variants are additionally distinguished by
+  marker shape (triangle/circle/square for H=0/H=1/H=3) since they share
+  one color family. Unlike Experiment C's quantitative table, this view
+  shows the learned methods landing close to the verified optimum on some
+  held-out tasks and not on others, rather than consistently.}
+  \label{fig:motivation-c-init-pools}
+\end{figure}
+
+% Table: see results/figures/motivation_C_table.tex (generated directly by
+% figures/figure_c.py::generate_table, not duplicated here to avoid the two
+% copies drifting apart).

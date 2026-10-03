@@ -148,17 +148,43 @@ own instruction ("keep implementation deliberately simple and document it"):
   — e.g. nearest-neighbor or tiny MLP over the 50 training tasks' own
   best-observed points; "keep it simple" per the doc).
 
-## 7. Status at time of writing
+## 7. Status at time of writing (scalar-t family, now superseded — see §8)
 
 - [x] `core/global_optimum.py` written and run: 70/70 verified, saved.
 - [x] Environment fixes (checkpoint symlink, `tune_executable`) applied and
       confirmed live.
-- [ ] BOLT-only trajectory chain: **running** (background, this session) —
-      `runs/synthetic_branin_50train_20heldout_bolt_v3_smaller/`.
-- [ ] Baselines config (`baselines_on_bolt_chain.yaml`) for STBO/MTBO/POGPE/SGPE.
-- [ ] ORPT H=1 (and H=0) trajectory chains — not started.
-- [ ] `core/regret.py`, `core/ranking_reversal.py`, Experiment C's two new
-      baselines, all figures — not started.
+- [x] BOLT-only trajectory chain, baselines, ORPT H=0/H=1/H=3 chains,
+      `core/regret.py`, `core/ranking_reversal.py`, Experiment C's two new
+      baselines, all figures — all completed on the scalar-t family. Fully
+      documented in `archive/scalar_t_20261002/motivation_results.md`
+      (superseded, kept as the historical record of the finding in §8).
 
-Nothing above has been reported as a finished result; this file tracks
-progress, not conclusions.
+## 8. Migration: scalar-t → affine-transform task family (2026-10-02/03)
+
+**Why**: the scalar-t family's global optimum x-location was proven
+independent of `t` (§1's task construction only varies the additive
+`cos(x1)` term's weight, never the quadratic term that pins the
+minimizer). This let Experiment C's context-free baselines
+(Prior-best-reuse, Context-regression) score deceptively well — Prior-best-
+reuse reached 0.016 initialization regret, next to zero, simply by
+replaying old points, because every task shared the same answer. That
+undermined the entire comparison this package exists to run.
+
+**What changed**: every task now applies its own random affine transform
+(shift + rotation + isotropic scale) to canonical Branin's input space
+before evaluation, instead of varying `t`. Full design, ranges, and
+rejection-sampling criteria: `synthetic_experiment/branin.py`,
+`global_optimum.py`, `task_splits.py` docstrings. The fairness decision in
+§3 (baselines read from the BOLT-only chain, not ORPT's own trajectories)
+and the fixed-base-model/task-count setup in §1 both still apply unchanged
+— only task construction changed, not the comparison's structure.
+
+**Did the fix work?** Confirmed directly: on the new family, Prior-best-
+reuse's initialization regret is 12.09 (now *worse* than Random's 10.14),
+vs. 0.016 on the old family. The degenerate "free win" is gone — see
+`motivation_results.md` (one level up; this file's own §1-§6 describe the
+now-archived scalar-t implementation and are not updated for the new
+family's task construction specifics).
+
+Status: full re-run complete (4 training chains, all heldout evals,
+Experiment B, Experiment C, all figures) — zero errors across every log.

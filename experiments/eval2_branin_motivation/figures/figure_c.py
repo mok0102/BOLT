@@ -59,14 +59,19 @@ from synthetic_experiment.config import load_config  # noqa: E402
 MILESTONE = 50
 CHECKPOINTS = (0, 5, 10, 50)
 
-# Inset zoom region for generate_trajectory: BOLT/ORPT-H0/ORPT-H1/ORPT-H3
-# (and Prior-best reuse) are visually indistinguishable in the main panel
-# once they've all decayed near zero -- b in [30,40] sits in a region of the
-# main axes that every method's curve has already passed through (Random/
-# ContextRegression are also near-converged there), so it doubles as empty
-# plotting area for the inset itself.
-INSET_B_RANGE = (30, 40)
-INSET_YLIM = (0.0, 0.045)
+# Inset zoom region for generate_trajectory: all 7 methods are visually
+# indistinguishable in the main panel once they've decayed near zero. Range
+# picked by checking motivation_C_initializer_objective.csv's actual per-b
+# min/max across methods on THIS family's data (not carried over from the
+# old scalar-t family, whose convergence happened earlier and lower -- a
+# (30,40)/(0,0.045) window tuned for that family clipped every curve off
+# the top for most of its own x-range here, since at b=30 regret is still
+# ~0.16-0.29): b in [38,50] is where every method has already dropped below
+# ~0.09 (so nothing is clipped) while still being visually separable (not
+# yet fully flat-converged), and b<25 is still comfortably empty plotting
+# space in the main axes' upper-right region for the inset itself.
+INSET_B_RANGE = (38, 50)
+INSET_YLIM = (0.0, 0.09)
 INSET_BOUNDS = (0.40, 0.38, 0.56, 0.58)  # (x0, y0, width, height), axes-fraction
 
 # generate_init_pools: which held-out tasks to show (index into
