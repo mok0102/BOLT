@@ -1,0 +1,35 @@
+# STBO / MTBO / POGPE / SGPE heldout baselines for Experiment A, pointed at
+# the 900-task BOLT-only chain's run_dir (same experiment_id, deliberately
+# NOT the h1_gpu23_n900.yaml's run_dir) -- same fairness reasoning as the
+# 50-task version (baselines_on_bolt_chain.yaml), unchanged by this scale-up.
+experiment_id: synthetic_branin_900train_20heldout_bolt_affine_v1
+milestones: [2, 5, 10, 20, 50, 100, 200, 400, 900]
+num_train_tasks: 900
+num_heldout_tasks: 20
+
+task_manifest: synthetic_experiment/task_manifests/branin_affine_v1_seed0_ntrain900.json
+
+oracle_budget: 50
+init_size: 5
+bsz: 10
+bo_seed: 42
+bo_candidate_pool_size: 128
+bo_lengthscale: 0.2
+bo_ucb_beta: 2.0
+trajectory_parallel_workers: 2
+table_k_checkpoints: [0, 1, 2, 5, 10, 20, 30, 40, 50]
+
+proposal_source: llm
+sampling_temperature: 1
+sft_top_n_per_task: 20
+sft_epochs: 5
+torchtune_config: qwen_2_5_3B_lora.yaml
+torchtune_recipe: lora_finetune_distributed
+base_checkpoint_dir: fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct
+cuda_visible_devices: "0,1"
+
+build_orpt: false
+build_stbo: true
+build_mtbo: true
+build_pogpe: true
+build_sgpe: true

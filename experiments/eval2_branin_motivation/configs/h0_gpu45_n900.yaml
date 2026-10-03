@@ -1,0 +1,57 @@
+# Copy of synthetic_900train_20heldout_affine_v1_h0.yaml with ONLY
+# cuda_visible_devices changed (0,1 -> 4,5), to run concurrently with the
+# other 900-task Branin chains without GPU contention.
+experiment_id: synthetic_branin_900train_20heldout_mi30_composite_affine_v1_h0
+milestones: [2, 5, 10, 20, 50, 100, 200, 400, 900]
+num_train_tasks: 900
+num_heldout_tasks: 20
+
+task_manifest: synthetic_experiment/task_manifests/branin_affine_v1_seed0_ntrain900.json
+
+oracle_budget: 50
+init_size: 5
+bsz: 10
+bo_seed: 42
+bo_candidate_pool_size: 128
+bo_lengthscale: 0.2
+bo_ucb_beta: 2.0
+trajectory_parallel_workers: 2
+table_k_checkpoints: [0, 1, 2, 5, 10, 20, 30, 40, 50]
+
+proposal_source: llm
+sampling_temperature: 1
+sft_top_n_per_task: 20
+sft_epochs: 5
+torchtune_config: qwen_2_5_3B_lora.yaml
+torchtune_recipe: lora_finetune_distributed
+base_checkpoint_dir: fine-tuning/query_plans/ckpt/Qwen2.5-3B-Instruct
+cuda_visible_devices: "4,5"
+
+build_orpt: true
+build_stbo: true
+build_pogpe: true
+build_sgpe: true
+build_mtbo: true
+mtbo_top_n_per_task: 20
+mtbo_max_train_points: 256
+build_optformer: true
+build_llambo: true
+orpt_epochs: 1
+orpt_beta: 0.1
+orpt_lr: 1.0e-5
+orpt_torchtune_config: qwen_2_5_3B_lora_dpo.yaml
+orpt_torchtune_recipe: lora_dpo_distributed
+
+mi_num_backgrounds: 3
+mi_target_pairs_per_task: 30
+mi_max_candidates_per_task: 30
+mi_tau_q: 1.0
+mi_z_min: 1.0
+mi_delta_t: 0.0
+mi_bo_steps: 0 # H=0: score the intervention without subsequent BO acquisitions.
+mi_utility_mode: terminal_best
+mi_parallel_workers: 16
+mi_seed: 42
+mi_bo_candidate_pool_size: 512
+mi_bo_lengthscale: 0.05
+mi_bo_ucb_beta: 0.0
