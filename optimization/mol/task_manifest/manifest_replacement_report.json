@@ -1,0 +1,29 @@
+{
+  "replaced_task_idx": [
+    130,
+    328,
+    370,
+    458,
+    461,
+    484,
+    488,
+    627,
+    764,
+    914
+  ],
+  "replacement_target_ids": {
+    "130": "P30083",
+    "328": "A0A0C7ACN7",
+    "370": "P21728",
+    "458": "P08311",
+    "461": "Q01827",
+    "484": "Q3V4E6",
+    "488": "Q9NAW2",
+    "627": "P30542",
+    "764": "C7C422",
+    "914": "Q9Y3R4"
+  },
+  "reason": "original seed SMILES exceeded DeepPurpose MAX_SEQ_DRUG=100 (silent CNN truncation bug fixed in mol_oracle.py; truncation made these seeds permanently unscoreable by the ensemble, not just hard)",
+  "skipped_candidates": [],
+  "method": "same step4_split_and_seed_selection.py locked rule, applied to the next unused target(s) in the same original random-seeded shuffle order (SPLIT_RANDOM_SEED=0) -- not hand-picked."
+}

@@ -1,0 +1,114 @@
+# Same as qwen_2_5_3B_lora_bsz64.yaml (SFT), except the micro-batch is split:
+# batch_size 64 -> 32 per device with gradient_accumulation_steps: 2, so the
+# effective per-device batch (32 x 2 = 64), the global batch (256 on 4 GPUs) and
+# the number of optimizer steps (492/epoch for 126k rows) are all unchanged.
+# torchtune's lora_finetune_distributed normalizes the accumulated loss by the
+# TOTAL token count across all accumulated micro-batches
+# (scale_grads(world_size / num_tokens)), so the gradient equals the single
+# 64-sample batch's token-mean.
+#
+# Why: mol_main_bolt runs on GPUs 4-7, shared with another user's job (~100 GB/GPU
+# in use, fluctuating). MEASURED 2026-10-01 (GPU UUIDs mapped to indices via
+# nvidia-smi -L): bsz-64 SFT = ~64 GB/rank, leaving only ~10-19 GB free on 4-7 (OOM
+# risk, and 8.5 s/step); this config = ~36 GB/rank (~40 GB free), ~6.0 s/step.
+# Cosmetic: mol_experiment/steps.py::distributed_finetune_launch reports "effective
+# global batch size" as batch_size x nproc (128), ignoring the accumulation; the
+# true value is 256.
+#
+output_dir: ./output/qwen_2_5_3B_lora_output  # overridden: output_dir=
+
+# Model Arguments
+model:
+  _component_: torchtune.models.qwen2_5.lora_qwen2_5_3b
+  lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
+  apply_lora_to_mlp: True
+  lora_rank: 8  # higher increases accuracy and memory
+  lora_alpha: 16  # usually alpha=2*rank
+  lora_dropout: 0.0
+
+tokenizer:
+  _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
+  path: ./ckpt/Qwen2.5-3B-Instruct/vocab.json  # overridden: tokenizer.path=
+  merges_file: ./ckpt/Qwen2.5-3B-Instruct/merges.txt  # overridden: tokenizer.merges_file=
+  max_seq_len: null
+
+# Dataset
+dataset:
+  _component_: torchtune.datasets.chat_dataset
+  source: json
+  data_files: ./train_data/train_data.jsonl  # overridden: dataset.data_files=
+  split: train
+  conversation_column: messages
+  conversation_style: openai
+  train_on_input: false
+  packed: false
+
+checkpointer:
+  _component_: torchtune.training.FullModelHFCheckpointer
+  checkpoint_dir: ./ckpt/Qwen2.5-3B-Instruct  # overridden: checkpointer.checkpoint_dir=
+  checkpoint_files: [
+    model-00001-of-00002.safetensors,
+    model-00002-of-00002.safetensors,
+  ]
+  recipe_checkpoint: null
+  output_dir: ${output_dir}
+  model_type: QWEN2
+resume_from_checkpoint: False
+# Save a full merged checkpoint (not adapter-only) so downstream stages
+# (sampling, ranking-stage checkpointer/reference) can load it exactly like
+# a normal HF checkpoint dir, with no separate merge step.
+save_adapter_weights_only: False
+
+# Fine-tuning arguments
+seed: 42
+shuffle: true
+batch_size: 32
+epochs: 5
+optimizer:
+  _component_: torch.optim.AdamW
+  fused: True
+  weight_decay: 0.01
+  lr: 3e-4
+lr_scheduler:
+  _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
+  num_warmup_steps: 20
+loss:
+  _component_: torchtune.modules.loss.CEWithChunkedOutputLoss
+max_steps_per_epoch: null
+gradient_accumulation_steps: 2
+clip_grad_norm: null
+compile: False
+
+# Training env
+device: cuda
+
+# Memory management
+enable_activation_checkpointing: True
+enable_activation_offloading: True
+
+# Reduced precision
+dtype: bf16
+
+# Logging
+metric_logger:
+  _component_: torchtune.training.metric_logging.TensorBoardLogger
+  log_dir: ./tensorboard  # overridden: metric_logger.log_dir=
+  organize_logs: True
+log_every_n_steps: 1
+log_peak_memory_stats: False
+
+# Profiler (disabled)
+profiler:
+  _component_: torchtune.training.setup_torch_profiler
+  enabled: False
+  output_dir: ${output_dir}/profiling_outputs
+  cpu: True
+  cuda: True
+  profile_memory: False
+  with_stack: False
+  record_shapes: True
+  with_flops: False
+  wait_steps: 5
+  warmup_steps: 3
+  active_steps: 2
+  num_cycles: 1

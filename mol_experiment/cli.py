@@ -23,6 +23,22 @@ class CLI:
         cfg = load_config(config)
         run_trajectory_chain(cfg)
 
+    def eval(self, config: str, arm: str, milestone: int, shard: str = "0/1") -> None:
+        """Heldout BO for one arm ("BOLT" or "ORPT-H1") at one milestone. The
+        config must set eval_init_size and eval_oracle_budget. Parallelize by
+        launching several processes with different CUDA_VISIBLE_DEVICES and
+        --shard k/N."""
+        from .eval_bo import run_heldout_eval
+
+        run_heldout_eval(load_config(config), arm, milestone, shard)
+
+    def eval_summary(self, config: str, arm: str, milestone: int) -> None:
+        """Best-objective-at-k table (cfg.table_k_checkpoints) over the heldout
+        tasks already evaluated for this arm/milestone; writes summary.json."""
+        from .eval_bo import summarize_heldout_eval
+
+        summarize_heldout_eval(load_config(config), arm, milestone)
+
 
 if __name__ == "__main__":
     fire.Fire(CLI)

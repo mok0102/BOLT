@@ -266,6 +266,21 @@ def mol_run_bo(
     for downstream consumers (train_x, train_y columns) -- feasibility masking
     for reporting is the caller's job (mirrors best_objective_at_k), not
     something this function decides, exactly as in peptide.
+
+    Termination: n_bo_steps=None (the default, every regular trajectory-chain
+    call site) loops until objective.num_calls reaches cfg.oracle_budget --
+    matching peptide's optimize.py::run() exactly (`while objective.num_calls
+    < max_n_oracle_calls`), not a fixed step count. Fixed real incident
+    (2026-10-01): the previous fixed-step-count version ((oracle_budget -
+    init_size) // bsz steps) let candidate-generation yield vary the actual
+    number of successful oracle calls per task -- real data showed this
+    ranging from 100% down to 18% of oracle_budget across already-completed
+    tasks, breaking the "every task spends exactly budget B oracle calls"
+    invariant paper-style comparisons require. n_bo_steps as an explicit
+    int (mi_orpt/one_step_evaluator.py passes 1) bypasses the call-count loop
+    entirely and always runs exactly that many steps regardless of how many
+    succeed -- the one-step-BO utility U_1 is defined over one acquisition
+    step's outcome, not a call count, so it must never be call-count-driven.
     """
     import csv
 
@@ -282,7 +297,6 @@ def mol_run_bo(
         return dest_csv
 
     task = get_task(task_idx)
-    n_bo_steps = n_bo_steps if n_bo_steps is not None else max(1, (cfg.oracle_budget - cfg.init_size) // cfg.bsz)
 
     oracle = EnsembleMolOracle(target_id=task.target_id, target_sequence=task.sequence)
     objective = MoleculeObjective(oracle=oracle, seed_smiles=task.seed_smiles, task_id=task.target_id)
@@ -342,15 +356,51 @@ def mol_run_bo(
 
         generation_pool = create_generation_pool(cfg.generation_workers)
     try:
-        for step in range(n_bo_steps):
-            lolbo_state.update_surrogate_model()
-            mol_acquisition_step(
-                lolbo_state, seed_smiles=task.seed_smiles, tau_mol=cfg.tau_mol,
-                n_candidates=max(20, cfg.bsz * 4), rng_seed=base_seed + step,
-                generation_pool=generation_pool, n_generation_workers=cfg.generation_workers,
-            )
-            if lolbo_state.tr_state.restart_triggered:
-                lolbo_state.initialize_tr_state()
+        if n_bo_steps is not None:
+            # Explicit override (mi_orpt/one_step_evaluator.py: n_bo_steps=1) --
+            # always a plain fixed-step loop, never call-count-based. See this
+            # function's own docstring for why.
+            for step in range(n_bo_steps):
+                lolbo_state.update_surrogate_model()
+                mol_acquisition_step(
+                    lolbo_state, seed_smiles=task.seed_smiles, tau_mol=cfg.tau_mol,
+                    n_candidates=max(20, cfg.bsz * 4), rng_seed=base_seed + step,
+                    generation_pool=generation_pool, n_generation_workers=cfg.generation_workers,
+                )
+                if lolbo_state.tr_state.restart_triggered:
+                    lolbo_state.initialize_tr_state()
+        else:
+            # Default: call-count-based, matching peptide's own optimize.py::run()
+            # (`while objective.num_calls < max_n_oracle_calls`) -- every task
+            # spends exactly cfg.oracle_budget successful BO-phase oracle calls,
+            # not a fixed number of acquisition steps. step_cap guards against a
+            # pathologically low-yield seed never reaching oracle_budget; hitting
+            # it is reported explicitly, never silently swallowed into a shorter
+            # trajectory.
+            step_cap = cfg.oracle_budget_step_cap
+            if step_cap is None:
+                step_cap = 20 * max(1, -(-cfg.oracle_budget // cfg.bsz))  # ceil div, 20x margin
+            step = 0
+            while objective.num_calls < cfg.oracle_budget:
+                if step >= step_cap:
+                    print(
+                        f"[{run_id} task {task_idx}] WARNING: hit step_cap={step_cap} with only "
+                        f"{objective.num_calls}/{cfg.oracle_budget} oracle calls -- stopping short. "
+                        "This task's trajectory is SHORTER than the budget (low-yield seed), "
+                        "reported here rather than silently padded or looped forever."
+                    )
+                    break
+                lolbo_state.update_surrogate_model()
+                mol_acquisition_step(
+                    lolbo_state, seed_smiles=task.seed_smiles, tau_mol=cfg.tau_mol,
+                    n_candidates=max(20, cfg.bsz * 4), rng_seed=base_seed + step,
+                    generation_pool=generation_pool, n_generation_workers=cfg.generation_workers,
+                )
+                if lolbo_state.tr_state.restart_triggered:
+                    lolbo_state.initialize_tr_state()
+                step += 1
+            print(f"[{run_id} task {task_idx}] finished: {objective.num_calls}/{cfg.oracle_budget} "
+                  f"oracle calls in {step} step(s)")
     finally:
         if generation_pool is not None:
             generation_pool.shutdown(wait=True)

@@ -184,10 +184,35 @@ class MolOracle:
         """Input: a list of candidate SELFIES (or SMILES if input_kind='smiles').
         Output: a list of the same length, each a maximize-oriented float score, or
         np.nan wherever the candidate does not decode/canonicalize to a valid
-        molecule. Mirrors ApexObjective.query_black_box's contract exactly."""
+        molecule, OR (this model only, when self.model.drug_encoding == 'CNN')
+        wherever the canonical SMILES exceeds DeepPurpose's own hardcoded
+        MAX_SEQ_DRUG=100 character cap. Mirrors ApexObjective.query_black_box's
+        contract exactly.
+
+        The length check exists because DeepPurpose's CNN drug encoder
+        (DeepPurpose.utils.trans_drug) does not reject an over-length SMILES --
+        it silently truncates to the first 100 characters and scores that
+        truncated string, producing a normal-looking (finite) number for the
+        wrong molecule. That's invisible to the "any non-finite member -> NaN
+        overall" safeguard in EnsembleMolOracle.query_oracle (a truncated score
+        is finite, not NaN), so without this check a too-long molecule would
+        silently corrupt this member's vote in the ensemble mean instead of
+        being excluded the way a genuine decode failure already is. Confirmed
+        real, not hypothetical: 9/900 task seeds already exceed 100 characters
+        (up to 169) -- see mol_experiment/MI_ORPT_PAIR_YIELD_TUNING.md-adjacent
+        investigation, 2026-10-01. Fingerprint-based drug encodings (Morgan,
+        Daylight -- the other 3 ensemble members) are fixed-size regardless of
+        SMILES length and are not affected."""
         canon_per_candidate: list[str | None] = [
             decode_and_canonicalize(c, input_kind) for c in candidates
         ]
+        if self.model.drug_encoding == "CNN":
+            from DeepPurpose.utils import MAX_SEQ_DRUG
+
+            canon_per_candidate = [
+                None if (canon is not None and len(canon) > MAX_SEQ_DRUG) else canon
+                for canon in canon_per_candidate
+            ]
 
         valid_canon = sorted({c for c in canon_per_candidate if c is not None})
         cached = self.cache.get_many(self.target_id, valid_canon)

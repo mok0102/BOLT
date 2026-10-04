@@ -1,14 +1,31 @@
 # mol domain main experiment -- BOLT-only arm (plain SFT, no DPO). Same
 # schedule/scale as mol_main_orpt_h1.yaml (must match for the BOLT-vs-ORPT
 # comparison to be apples-to-apples, same requirement as peptide's own
-# peptide_main_bolt.yaml/lorarank_8_orpt_h1.yaml pairing): oracle_budget=
-# 20000, init_size=1000, bsz=50, sft_epochs=5, milestones
-# [126, 252, 378, 504, 630, 756, 900]. Own experiment_id/run_dir --
-# independent trajectory chain from task 0 (this arm's own BOLT-<m>
-# checkpoints are never touched by the ORPT arm's chain, and vice versa).
+# peptide_main_bolt.yaml/lorarank_8_orpt_h1.yaml pairing): init_size=1000,
+# bsz=50, sft_epochs=5, milestones [126, 252, 378, 504, 630, 756, 900].
+# Own experiment_id/run_dir -- independent trajectory chain from task 0
+# (this arm's own BOLT-<m> checkpoints are never touched by the ORPT arm's
+# chain, and vice versa).
 #
-# GPU slice: dedicated 4-GPU slice (0-3), distinct from mol_main_orpt_h1.yaml's
-# (4-7) -- see experiments/eval2/pipelines/run_train.sh's own header for why
+# oracle_budget=5000 (NOT peptide's 20000) -- explicit instruction, traded
+# off against the 5-6 day turnaround target, after mol_run_bo's termination
+# bug was fixed (2026-10-01): oracle_budget now means exactly what it does
+# in peptide (successful BO-phase oracle calls only, via objective.num_calls,
+# excluding init_size -- see config.py's own field comment and
+# mol_experiment/steps.py::mol_run_bo's docstring for the full incident).
+# Previously oracle_budget=20000 was silently being treated as inclusive of
+# init_size AND only enforced as a fixed step count, not an actual call
+# count, so real per-task oracle-call totals ranged from 100% down to 18% of
+# the nominal value -- all data collected under that bug has been deleted
+# and is being regenerated under the fixed loop at this new budget value.
+#
+# GPU slice: 4-7 (swapped 2026-10-01, explicit choice "C"): mol_main_orpt_h1.yaml
+# now holds 0-3 because its DPO stage is the memory-hungry one and 4-7 is shared
+# with another user's job (~100 GB/GPU already in use, fluctuating). This arm is
+# SFT-only, bsz32 x accum2 (effective 64/device, global 256). MEASURED 2026-10-01: this ~36 GB/rank,
+# ~6.0 s/step on the shared slice; plain bsz64 = ~64 GB/rank (only ~10-19 GB free beside the other user's
+# job -> OOM risk) and 8.5 s/step. (An intermediate comment here misattributed ORPT's 59 GB sampling
+# workers to this arm; the UUID->index mapping was misread.) -- see torchtune_config below. Distinct from the other arm's slice -- see experiments/eval2/pipelines/run_train.sh's own header for why
 # this split matters (two configs each silently claiming "all 8" would
 # contend for the same physical GPUs when launched concurrently).
 # mi_parallel_gpus distributes SFT training (steps.py::distributed_finetune_launch)
@@ -21,19 +38,19 @@
 # launching -- do not assume these ids are still free.
 experiment_id: mol_main_bolt
 milestones: [126, 252, 378, 504, 630, 756, 900]
-oracle_budget: 20000
+oracle_budget: 5000
 init_size: 1000
 bsz: 50
 sft_epochs: 5
 build_orpt: false
-mi_parallel_gpus: ["0", "1", "2", "3"]
-cuda_visible_devices: "0"
+mi_parallel_gpus: ["4", "5", "6", "7"]
+cuda_visible_devices: "4"
 
 # batch_size=64/device (global batch 256 on this arm's 4 GPUs) -- see
 # fine-tuning/mol/torchtune_config/qwen_2_5_3B_lora_bsz64.yaml's own header
 # comment for the full rationale/risk flag (8x peptide's own global batch,
 # no LR rescale). Per explicit instruction, not a peptide-mirrored value.
-torchtune_config: qwen_2_5_3B_lora_bsz64.yaml
+torchtune_config: qwen_2_5_3B_lora_bsz32_accum2.yaml
 
 # Candidate-generation CPU sub-pool (optimization/mol/mol_generation_pool.py):
 # splits each BO step's n_candidates=200 generate-and-filter call across 4

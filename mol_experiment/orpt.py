@@ -202,6 +202,51 @@ def build_orpt_pairs(cfg: MolExperimentConfig, milestone: int):
 MIN_DPO_STEPS = 8
 
 
+def _filter_pairs_by_length(cfg: MolExperimentConfig, pairs_jsonl, milestone: int):
+    """Returns the pairs file the DPO stage should train on. With
+    cfg.orpt_max_pair_tokens=None this is pairs_jsonl itself. Otherwise pairs
+    whose longer side exceeds the limit (HF chat-template token count, the same
+    measure the limit was chosen with) are dropped into
+    orpt_pairs_<m>_maxtok<N>.jsonl; the original file is left untouched.
+    Always reports what was dropped (count, distinct targets) -- never silent."""
+    max_tokens = cfg.orpt_max_pair_tokens
+    if max_tokens is None:
+        return pairs_jsonl
+
+    import json
+
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(cfg.base_checkpoint_dir)
+
+    def n_tokens(messages) -> int:
+        out = tokenizer.apply_chat_template(messages, tokenize=True)
+        return len(out["input_ids"] if hasattr(out, "keys") else out)
+
+    kept, dropped_targets = [], set()
+    n_total = 0
+    for line in pairs_jsonl.read_text().splitlines():
+        if not line.strip():
+            continue
+        n_total += 1
+        rec = json.loads(line)
+        if max(n_tokens(rec["chosen"]), n_tokens(rec["rejected"])) <= max_tokens:
+            kept.append(line)
+        else:
+            user = next(m["content"] for m in rec["chosen"] if m["role"] == "user")
+            dropped_targets.add(user.split("\n")[1])  # the target protein sequence line
+
+    out_path = pairs_jsonl.with_name(f"{pairs_jsonl.stem}_maxtok{max_tokens}.jsonl")
+    tmp_path = out_path.with_suffix(".tmp")
+    tmp_path.write_text("".join(line + "\n" for line in kept))
+    tmp_path.replace(out_path)
+    print(
+        f"[orpt milestone {milestone}] orpt_max_pair_tokens={max_tokens}: kept {len(kept)}/{n_total} pairs, "
+        f"dropped {n_total - len(kept)} pair(s) from {len(dropped_targets)} distinct target(s) -> {out_path}"
+    )
+    return out_path
+
+
 def _fit_dpo_batch_size(extra_overrides, pairs_jsonl, nproc_per_node, cfg, fine_tuning_dir, milestone):
     """Byte-identical port of peptide_experiment/orpt.py::_fit_dpo_batch_size
     -- see that docstring for the full torchtune-drops-incomplete-batches
@@ -258,7 +303,7 @@ def train_orpt_milestone(cfg: MolExperimentConfig, milestone: int):
         )
 
     fine_tuning_dir = cfg.bolt_root / FINE_TUNING_DIR
-    pairs_jsonl = build_orpt_pairs(cfg, milestone)
+    pairs_jsonl = _filter_pairs_by_length(cfg, build_orpt_pairs(cfg, milestone), milestone)
     if pairs_jsonl.stat().st_size == 0:
         # matched_intervention's reliability filter can legitimately yield zero
         # pairs for every task in a milestone -- surface that clearly instead of

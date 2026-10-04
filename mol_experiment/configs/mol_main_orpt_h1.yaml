@@ -1,9 +1,23 @@
 # mol domain main experiment -- BindingDB paper-scale ORPT (matched-intervention).
 # Schedule/scale mirrors peptide's own current production config
-# (peptide_experiment/configs/lorarank_8_orpt_h1.yaml) field-for-field:
-# oracle_budget=20000, init_size=1000, bsz=50, sft_epochs=5, milestones
-# [126, 252, 378, 504, 630, 756, 900], mi_* BO-utility settings, and
-# orpt_beta/orpt_lr. The mi_* pair-construction values (mi_num_backgrounds=8,
+# (peptide_experiment/configs/lorarank_8_orpt_h1.yaml): init_size=1000,
+# bsz=50, sft_epochs=5, milestones [126, 252, 378, 504, 630, 756, 900],
+# mi_* BO-utility settings, and orpt_beta/orpt_lr.
+#
+# oracle_budget=5000, NOT peptide's 20000 -- explicit instruction, traded off
+# against a 5-6 day turnaround target, after mol_run_bo's termination bug was
+# fixed (2026-10-01): oracle_budget now means exactly what it does in
+# peptide (successful BO-phase oracle calls only, via objective.num_calls,
+# excluding init_size -- see config.py's own field comment and
+# mol_experiment/steps.py::mol_run_bo's docstring for the full incident).
+# Previously oracle_budget=20000 was silently treated as inclusive of
+# init_size AND only enforced as a fixed step count, not an actual call
+# count, so real per-task oracle-call totals ranged from 100% down to 18% of
+# the nominal value across already-completed tasks on BOTH arms -- all data
+# collected under that bug has been deleted and is being regenerated under
+# the fixed loop at this new budget value.
+#
+# The mi_* pair-construction values (mi_num_backgrounds=8,
 # mi_background_size=20, mi_z_min=1.0, mi_target_pairs_per_task=30,
 # mi_max_candidates_per_task=24) were independently confirmed to transfer to
 # mol's own pair-construction statistics before adopting them here (byte-
@@ -38,42 +52,51 @@
 #   2. mi_candidate_temperature=1.5 (below) additionally samples a dedicated
 #      ~645-candidate pool (min_bank_size_needed(20,24)*15) per task per
 #      milestone via mol_sample_and_build_init -- real LLM generation +
-#      real oracle scoring. This one is STILL serial/in-process
-#      (mol_experiment/orpt.py's own module docstring: no warm-sampling-pool
-#      equivalent for mol yet, unlike cost 1 above), also not yet benchmarked
-#      at this checkpoint scale. peptide's own analogous plateau note
-#      (eval_raw_temperature's comment: median ~305/1000 unique+feasible
-#      candidates found even after 5 retries at milestone 900) suggests mol
-#      should expect a similar shortfall, not a clean fill to pool_size, but
-#      the wall-clock cost of those retries is real regardless of yield.
-# With mi_max_tasks_per_milestone unset (mirroring peptide's own current
-# choice -- every task in [0, milestone) is used, same as BOLT-<m>'s SFT
-# dataset), both costs apply to the FULL task count at every milestone (sum
-# of [126..900] = 3546 task-constructions) -- roughly ~5 days for cost 1
-# alone at 4-way parallelism (~2.5 days once mol_main_bolt.yaml's chain
-# finishes and this arm's mi_parallel_gpus is manually expanded to all 8,
-# see the plan discussed when this run was launched), plus cost 2's
-# still-unparallelized, still-unbenchmarked addition on top. Strongly
-# recommend watching the first milestone's actual wall-clock once it's
-# reached, rather than assuming this estimate holds for the full schedule.
+#      real oracle scoring. NOW ALSO parallelized across mi_parallel_gpus
+#      (mi_orpt/warm_sampling_pool.py, added after this comment was first
+#      written -- correcting the earlier "still serial" note here). peptide's
+#      own analogous plateau note (eval_raw_temperature's comment: median
+#      ~305/1000 unique+feasible candidates found even after 5 retries at
+#      milestone 900) suggests mol should expect a similar shortfall, not a
+#      clean fill to pool_size, but the wall-clock cost of those retries is
+#      real regardless of yield.
+# mi_max_tasks_per_milestone is capped at 252 (see its comment further below),
+# so costs 1 and 2 apply to min(m, 252) tasks per milestone (126 + 252*6 = 1638
+# task-constructions in total, vs 3546 uncapped). Measured 2026-10-01 on an
+# 8-task probe (milestone 30, 4 GPUs): candidate-pool sampling ~15 s/task and
+# build_pairs ~103 s/task, i.e. ~118 s/task aggregate -- the older per-call
+# estimates above predate that and are superseded by it. oracle_budget has no
+# effect on this cost (it scales with mi_num_backgrounds/mi_max_candidates_per_task).
 experiment_id: mol_main_orpt_h1
 milestones: [126, 252, 378, 504, 630, 756, 900]
-oracle_budget: 20000
+oracle_budget: 5000
 init_size: 1000
 bsz: 50
 sft_epochs: 5
 
-# GPU slice: dedicated 4-GPU slice (4-7), distinct from mol_main_bolt.yaml's
-# (0-3) -- run_train.sh-style split so the two arms never contend for the
-# same physical GPU when launched concurrently. mi_parallel_gpus distributes
-# SFT/DPO training and build_pairs.py's reference-model scoring across all
-# 4; cuda_visible_devices pins the one-step-BO calls during pair
-# construction (mi_orpt/one_step_evaluator.py -- always serial, in-process,
-# never through mi_parallel_gpus, see the tractability caveat above) and
+# GPU slice: moved to 0-3 (2026-10-01, explicit instruction) -- mol_main_bolt's
+# SFT training was stopped to free this dedicated, UNSHARED slice for ORPT.
+# Originally 4-7, but those GPUs are shared with another user's job (real,
+# externally-owned usage, confirmed via nvidia-smi -- not ours to reclaim) with
+# fluctuating free memory, which is why DPO at both batch_size=64 and 32 OOM'd
+# there (close margins: needed 68GiB more at bsz64, 33.58GiB more at bsz32,
+# shrinking ~linearly with batch_size but never quite fitting in whatever was
+# free at that instant). 0-3 is fully dedicated, so the same batch_size has a
+# fixed, predictable memory budget here. mi_parallel_gpus distributes SFT/DPO
+# training and build_pairs.py's reference-model scoring across all 4;
+# cuda_visible_devices pins the one-step-BO calls during pair construction
+# (mi_orpt/one_step_evaluator.py -- always serial, in-process, never through
+# mi_parallel_gpus, see the tractability caveat above) and
 # mol_sample_and_build_init's dedicated-pool LLM sampling. Check nvidia-smi
 # fresh before launching -- do not assume these ids are still free.
-mi_parallel_gpus: ["4", "5", "6", "7"]
-cuda_visible_devices: "4"
+# UPDATE 2026-10-04: expanded to all 8 GPUs once mol_main_bolt finished (BOLT-126..900
+# all done, 4-7 free). The 0-3 rationale above (dedicated slice vs shared 4-7) no
+# longer applies. Global batch is held constant by the two torchtune configs
+# below (SFT 32/device x 8 = 256, DPO 16/device x 8 = 128, same as the earlier
+# 4 x 64 / 4 x 32 for milestones <= 504-630). Applies from the first stage run after the
+# restart; milestones trained earlier on 4 GPUs are unchanged.
+mi_parallel_gpus: ["0", "1", "2", "3", "4", "5", "6", "7"]
+cuda_visible_devices: "0"
 
 build_orpt: true
 orpt_epochs: 1
@@ -91,19 +114,53 @@ mi_bo_steps: 1
 # mi_require_h0 left at its default (true) -- this is the H0-AND-H1 arm, matching peptide's.
 mi_candidate_temperature: 1.5
 mi_candidate_pool_size: 2000
-# mi_max_tasks_per_milestone intentionally unset -- mirrors peptide's own
-# current choice (uncapped, every task in [0, milestone) used). See the
-# tractability caveat above: this is the single biggest cost lever for mol
-# specifically, since mol has no parallel one-step-BO pool the way peptide's
-# uncapped choice relied on.
+# mi_max_tasks_per_milestone=252 -- DELIBERATE deviation from peptide (which is
+# uncapped: every task in [0, milestone), giving 3,717 pairs at milestone 126
+# up to 24,262 at 900 per runs/lorarank_8_orpt_h1/orpt_pairs). Chosen
+# 2026-10-01 to fit a ~1 week compute budget: pair construction measured at
+# ~118 s/task (4-GPU aggregate, one 8-task probe, so +-tens of % uncertainty)
+# is the dominant cost (uncapped: ~116 h; N=252: ~54 h), while the DPO stage
+# only needs "enough pairs", not pairs proportional to SFT size. With N=252
+# milestone 126 is unaffected (uses all 126 tasks, ~3.2k pairs, same scale as
+# peptide's), and every later milestone gets ~6.4k pairs (peptide: 7k-24k).
+# Known untested risk: DPO optimizer steps stay ~50/milestone from 252 on
+# (peptide's grow to ~190 at 900), so later ORPT-m may move less from BOLT-m
+# than peptide's did. Tasks are a fixed-seed uniform subsample of [0, m)
+# (orpt.py), not the first N. Whole-run estimate for this arm at sft_epochs=5:
+# ~112 h (4.7 d): SFT ~52 h + pairs ~54 h + trajectories ~6 h + DPO <2 h.
+mi_max_tasks_per_milestone: 252
 
-# batch_size=64/device for both the SFT (BOLT-<m>) and DPO (ORPT-<m>) stages
-# (global batch 256 on this arm's 4 GPUs) -- see fine-tuning/mol/torchtune_config/
-# qwen_2_5_3B_lora_bsz64.yaml's own header comment for the full rationale/risk
-# flag (8x peptide's own global batch, no LR rescale). Per explicit
-# instruction, not a peptide-mirrored value.
-torchtune_config: qwen_2_5_3B_lora_bsz64.yaml
-orpt_torchtune_config: qwen_2_5_3B_lora_dpo_bsz64.yaml
+# orpt_max_pair_tokens=935 -- DPO-stage length filter, added 2026-10-03 after
+# ORPT-504's DPO OOM'd at step 2 (batch_size 32/device, a ~958-token padded
+# batch; 143.2 GiB allocated + 34.7 GiB requested vs 178.36 GiB). Pair length is
+# driven by the target protein in the prompt (corr 0.85) and DPO pads each batch
+# to its longest pair. 935 = the longest pair (HF chat-template tokens) among
+# ORPT-126/252/378, all of which trained fine at this batch size, so the
+# filter drops nothing from those three (their max: 935/911/922) and drops 84/6663
+# pairs (4 targets, protein len 820-976) at 504. DELIBERATE deviation: those
+# targets are excluded from the DPO stage only (BOLT SFT still trains on them),
+# and 935 is only known to fit, not known to be the true ceiling. Filtered pairs
+# go to orpt_pairs_<m>_maxtok935.jsonl; the original file is never modified.
+orpt_max_pair_tokens: 935
+
+# batch_size=64/device for SFT (BOLT-<m>); DPO (ORPT-<m>) uses 32, not 64 --
+# see fine-tuning/mol/torchtune_config/qwen_2_5_3B_lora_bsz64.yaml's header
+# for the SFT rationale/risk flag (8x peptide's own global batch, no LR
+# rescale, per explicit instruction). DPO was ALSO tried at 64 first and
+# OOM'd on milestone 126 (torch.OutOfMemoryError, needed 68.32 GiB more on
+# top of 142.78 GiB already in use of 178.36 GiB) -- DPO holds chosen+
+# rejected sequences per example simultaneously, roughly doubling memory vs.
+# SFT at the same batch_size, confirmed DPO-stage-specific since BOLT's own
+# SFT-only arm ran batch_size=64 fine to task 378/900 the whole time ORPT sat
+# crashed. See qwen_2_5_3B_lora_dpo_bsz32.yaml's own header for the full
+# incident writeup.
+# 8-GPU switch (2026-10-04): SFT bsz64 -> bsz32 (8 ranks x 32 = global 256, same as
+# the earlier 4 x 64) and DPO bsz32 -> bsz16 (8 x 16 = global 128, same as 4 x 32),
+# both with gradient_accumulation_steps=1. Sample sharding/order differs with
+# 8 ranks, so not bit-identical to 4-GPU runs. (The comments above describe the
+# original 4-GPU bsz64/bsz32 values.)
+torchtune_config: qwen_2_5_3B_lora_bsz32.yaml
+orpt_torchtune_config: qwen_2_5_3B_lora_dpo_bsz16.yaml
 
 # Candidate-generation CPU sub-pool (optimization/mol/mol_generation_pool.py):
 # splits each BO step's n_candidates=200 generate-and-filter call across 4

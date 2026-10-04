@@ -1,0 +1,104 @@
+# Same as qwen_2_5_3B_lora_dpo_bsz32.yaml, except batch_size: 32 -> 16
+# (gradient_accumulation_steps stays 1). For 8-GPU runs: 8 ranks x 16/device
+# = global batch 128, identical to the 4 ranks x 32/device = 128 that
+# qwen_2_5_3B_lora_dpo_bsz32.yaml gave mol_main_orpt_h1's earlier milestones
+# (ORPT-126..504) -- the effective batch is preserved when that arm moves from
+# 4 to 8 GPUs (2026-10-04). Per-device memory is roughly halved vs bsz32, which
+# also removes the OOM risk that hit ORPT-504 at 32/device on 4 GPUs (a
+# ~958-token padded batch: 143.2 GiB allocated + 34.7 GiB requested vs 178.36 GiB;
+# see qwen_2_5_3B_lora_dpo_bsz32.yaml and config.py's orpt_max_pair_tokens). Same
+# LR, beta (via orpt.py), LoRA settings. Caveat: equal global batch, but with 8
+# ranks the sampler shards/orders samples differently, so results are not
+# bit-identical to a 4-GPU run.
+#
+# All *_dir / *_files / *.path fields below are placeholders: mol_experiment's
+# orpt.py always overrides them via CLI args.
+#
+# To launch on 8 devices, run from repo root:
+#   tune run --nnodes 1 --nproc_per_node 8 lora_dpo_distributed \
+#       --config fine-tuning/mol/torchtune_config/qwen_2_5_3B_lora_dpo_bsz16.yaml
+
+output_dir: ./output/qwen_2_5_3B_lora_dpo_output  # overridden: output_dir=
+
+# Model Arguments -- same LoRA hyperparameters as qwen_2_5_3B_lora.yaml so the
+# only thing that differs between the BOLT-SFT and ORPT arms is the ranking/
+# fine-tuning stage itself, not the adapter capacity.
+model:
+  _component_: torchtune.models.qwen2_5.lora_qwen2_5_3b
+  lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
+  apply_lora_to_mlp: True
+  lora_rank: 8  # higher increases accuracy and memory
+  lora_alpha: 16  # usually alpha=2*rank
+  lora_dropout: 0.0
+
+tokenizer:
+  _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
+  path: ./ckpt/Qwen2.5-3B-Instruct/vocab.json  # overridden: tokenizer.path=
+  merges_file: ./ckpt/Qwen2.5-3B-Instruct/merges.txt  # overridden: tokenizer.merges_file=
+  max_seq_len: null
+
+# Dataset -- {"chosen": [...messages...], "rejected": [...messages...]} JSONL,
+# exactly what mi_orpt/build_pairs.py emits; default "chosen"/"rejected"
+# column names match it, no column_map needed.
+dataset:
+  _component_: torchtune.datasets.preference_dataset
+  source: json
+  data_files: ./orpt_pairs/orpt_pairs.jsonl  # overridden: dataset.data_files=
+  split: train
+  train_on_input: false
+
+checkpointer:
+  # Overridden to that milestone's own BOLT-<m> checkpoint: this loads BOLT-<m>'s
+  # weights as both pi_theta's initialization and (via the LoRA adapter-disable
+  # trick in lora_dpo_distributed.py) the frozen pi_ref -- no separate
+  # ref_checkpointer needed.
+  _component_: torchtune.training.FullModelHFCheckpointer
+  checkpoint_dir: ./ckpt/Qwen2.5-3B-Instruct  # overridden: checkpointer.checkpoint_dir=
+  checkpoint_files: [
+    model-00001-of-00002.safetensors,
+    model-00002-of-00002.safetensors,
+  ]
+  recipe_checkpoint: null
+  output_dir: ${output_dir}
+  model_type: QWEN2
+resume_from_checkpoint: False
+save_adapter_weights_only: False
+
+# Fine-tuning arguments
+seed: 42
+shuffle: true
+batch_size: 16
+epochs: 1  # DPO default; separate knob from sft_epochs (cfg.orpt_epochs)
+optimizer:
+  _component_: torch.optim.AdamW
+  fused: True
+  weight_decay: 0.01
+  lr: 3e-4
+lr_scheduler:
+  _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
+  num_warmup_steps: 20
+loss:
+  _component_: torchtune.rlhf.loss.DPOLoss
+  beta: 0.1  # overridden: loss.beta=
+  label_smoothing: 0
+max_steps_per_epoch: null
+gradient_accumulation_steps: 1
+compile: False
+
+# Training env
+device: cuda
+
+# Memory management
+enable_activation_checkpointing: True
+enable_activation_offloading: True
+
+# Reduced precision
+dtype: bf16
+
+# Logging
+metric_logger:
+  _component_: torchtune.training.metric_logging.TensorBoardLogger
+  log_dir: ./tensorboard  # overridden: metric_logger.log_dir=
+  organize_logs: True
+log_every_n_steps: 1
+log_peak_memory_stats: False
