@@ -13,8 +13,13 @@ Exact x/y-axis strings (reproduced verbatim, not paraphrased):
   y-axis: "Simple regret to global optimum ↓"
 
 Legend labels are the doc's own preferred text, via LEGEND_LABEL below:
-  Random / Prior-best reuse / Context-to-optimum regression /
-  BOLT (Top-K SFT) / H=0 preference / ORPT (H=1)
+  Random / Prior-best reuse / BOLT (Top-K SFT) / H=0 preference / ORPT (H=1)
+
+Context-to-optimum regression is deliberately excluded from MAIN_METHODS
+(per explicit user request: too hard to interpret) -- its implementation in
+core/initializer_baselines.py and the "ContextRegression" arm itself are
+untouched, and a caller may still pass it explicitly via the `methods`
+override on generate_init_pools.
 
 "BOLT (Top-K SFT)", not "Top-K SFT": this package's BOLT arm IS
 synthetic_experiment's own real BOLT baseline (trajectory_chain.py's
@@ -44,6 +49,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.spatial.distance import pdist
 
 PKG_ROOT = Path(__file__).resolve().parents[1]
 BOLT_ROOT = PKG_ROOT.parents[1]
@@ -91,7 +97,7 @@ CONTOUR_WINDOW = 2.0 * DEFAULT_PARAMETERS.s * (1.0 - DEFAULT_PARAMETERS.t)
 # style.ARM_COLOR lookup key (see style.py's Experiment-C purple-family
 # addition for Random/PriorBestReuse/ContextRegression; BOLT/ORPT reuse
 # their existing Figure-A colors).
-MAIN_METHODS = ("Random", "PriorBestReuse", "ContextRegression", "BOLT", "ORPT-H0", "ORPT-H1")
+MAIN_METHODS = ("Random", "PriorBestReuse", "BOLT", "ORPT-H0", "ORPT-H1")
 SECONDARY_METHODS = ("ORPT-H3",)
 
 LEGEND_LABEL = {
@@ -343,3 +349,144 @@ def generate_init_pools(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     return style.savefig(fig, out_dir, filename)
+
+
+def generate_init_pool_diversity(
+    baselines_config: str, h0_config: str, h1_config: str, out_dir: Path,
+    h3_config: str | None = None, include_h3: bool = True,
+    methods: list[str] | None = None,
+) -> tuple[Path, Path]:
+    """Quantitative companion to generate_init_pools' 2D scatter (per
+    explicit user request): one number per (method, held-out task) summarizing
+    whether that method's init_size proposed points actually spread across
+    the input space or collapsed onto one basin -- the mean pairwise
+    Euclidean distance among them, normalized by BRANIN_BOUNDS' span so the
+    two input dimensions are on the same scale. Low = concentrated/
+    degenerate (PriorBestReuse/ContextRegression-style single-point reuse is
+    exactly 0); high = spread out, the way Random necessarily is by
+    construction. Aggregated over all 20 held-out tasks, not just the 3
+    generate_init_pools happens to show -- answers "is this basin
+    concentration a real pattern or just those 3 tasks" with the full
+    sample.
+    """
+    baselines_cfg = load_config(baselines_config)
+    h0_cfg = load_config(h0_config)
+    h1_cfg = load_config(h1_config)
+    h3_cfg = load_config(h3_config) if h3_config else None
+    for cfg, name in ((h0_cfg, "h0"), (h1_cfg, "h1"), *([(h3_cfg, "h3")] if h3_cfg else [])):
+        if cfg.manifest.token != baselines_cfg.manifest.token:
+            raise ValueError(f"{name} config's task manifest differs from the baselines config")
+
+    if methods is None:
+        methods = list(MAIN_METHODS) + (list(SECONDARY_METHODS) if include_h3 else [])
+
+    span = np.array([hi - lo for lo, hi in BRANIN_BOUNDS])
+    rows = []
+    for method in methods:
+        run_dir, arm, milestone = _resolve(method, baselines_cfg, h0_cfg, h1_cfg, h3_cfg)
+        for task in baselines_cfg.heldout_tasks:
+            pts = _init_pool(run_dir, arm, milestone, task, baselines_cfg.init_size) / span
+            diversity = float(pdist(pts).mean()) if len(pts) > 1 else 0.0
+            rows.append({"method": method, "task_index": task.index, "mean_pairwise_distance": diversity})
+    data = pd.DataFrame(rows)
+
+    style.apply_rcparams()
+    fig, ax = plt.subplots(figsize=style.FIGSIZE)
+    rng = np.random.default_rng(0)
+    for i, method in enumerate(methods):
+        values = data.loc[data.method == method, "mean_pairwise_distance"].to_numpy()
+        color = style.arm_color(method)
+        jitter = rng.uniform(-0.12, 0.12, size=len(values))
+        ax.scatter(np.full(len(values), i) + jitter, values, color=color, s=10,
+                  alpha=0.5, linewidth=0, zorder=2)
+        mean = values.mean()
+        sem = values.std(ddof=1) / np.sqrt(len(values))
+        ax.errorbar([i], [mean], yerr=[sem], color=color, marker="o", markersize=6,
+                   linewidth=0, elinewidth=1.6, capsize=3, zorder=3)
+    ax.set_xticks(range(len(methods)))
+    ax.set_xticklabels([LEGEND_LABEL[m] for m in methods], rotation=20, ha="right")
+    ax.set_ylabel("Init-pool diversity\n(mean pairwise distance, normalized)")
+    ax.set_ylim(bottom=0)
+    style.style_axis(ax)
+    fig.tight_layout()
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    style.save_csv(data, out_dir, "motivation_C_init_pool_diversity")
+    return style.savefig(fig, out_dir, "motivation_C_init_pool_diversity")
+
+
+def generate_init_pool_optimum_distance(
+    baselines_config: str, h0_config: str, h1_config: str, out_dir: Path,
+    h3_config: str | None = None, include_h3: bool = True,
+    methods: list[str] | None = None,
+) -> tuple[Path, Path]:
+    """Second quantitative companion to generate_init_pools (per explicit
+    user request, following generate_init_pool_diversity): tests whether a
+    method's advantage comes from TARGETING the optimum's neighborhood
+    rather than from spreading its init_size points across the space.
+    Reports, per (method, held-out task), the normalized Euclidean distance
+    in INPUT space from each init-pool point to that task's verified x_star
+    -- both the pool mean (overall targeting) and the pool min (closest
+    point -- the one that actually sets `Initialization regret` in
+    generate_table, since that column is the best-of-pool score). Distances
+    use the same BRANIN_BOUNDS-span normalization as
+    generate_init_pool_diversity, so the two figures are directly
+    comparable: a method can be simultaneously low-diversity (points
+    clustered together) and low-distance (clustered NEAR the optimum
+    rather than in an arbitrary basin) -- diversity alone cannot tell
+    those apart, which is exactly why this second figure exists.
+    """
+    baselines_cfg = load_config(baselines_config)
+    h0_cfg = load_config(h0_config)
+    h1_cfg = load_config(h1_config)
+    h3_cfg = load_config(h3_config) if h3_config else None
+    for cfg, name in ((h0_cfg, "h0"), (h1_cfg, "h1"), *([(h3_cfg, "h3")] if h3_cfg else [])):
+        if cfg.manifest.token != baselines_cfg.manifest.token:
+            raise ValueError(f"{name} config's task manifest differs from the baselines config")
+
+    if methods is None:
+        methods = list(MAIN_METHODS) + (list(SECONDARY_METHODS) if include_h3 else [])
+
+    span = np.array([hi - lo for lo, hi in BRANIN_BOUNDS])
+    rows = []
+    for method in methods:
+        run_dir, arm, milestone = _resolve(method, baselines_cfg, h0_cfg, h1_cfg, h3_cfg)
+        for task in baselines_cfg.heldout_tasks:
+            pts = _init_pool(run_dir, arm, milestone, task, baselines_cfg.init_size) / span
+            x_star = np.asarray(task.verified.x_star) / span
+            dist = np.linalg.norm(pts - x_star, axis=1)
+            rows.append({
+                "method": method, "task_index": task.index,
+                "mean_distance_to_optimum": float(dist.mean()),
+                "min_distance_to_optimum": float(dist.min()),
+            })
+    data = pd.DataFrame(rows)
+
+    style.apply_rcparams()
+    fig, axes = plt.subplots(1, 2, figsize=(style.FIGSIZE[0] * 2.0, style.FIGSIZE[1]), sharex=True)
+    rng = np.random.default_rng(0)
+    for ax, metric, title in zip(
+        axes, ("mean_distance_to_optimum", "min_distance_to_optimum"),
+        ("Pool mean distance to optimum", "Pool closest point to optimum"),
+    ):
+        for i, method in enumerate(methods):
+            values = data.loc[data.method == method, metric].to_numpy()
+            color = style.arm_color(method)
+            jitter = rng.uniform(-0.12, 0.12, size=len(values))
+            ax.scatter(np.full(len(values), i) + jitter, values, color=color, s=10,
+                      alpha=0.5, linewidth=0, zorder=2)
+            mean = values.mean()
+            sem = values.std(ddof=1) / np.sqrt(len(values))
+            ax.errorbar([i], [mean], yerr=[sem], color=color, marker="o", markersize=6,
+                       linewidth=0, elinewidth=1.6, capsize=3, zorder=3)
+        ax.set_xticks(range(len(methods)))
+        ax.set_xticklabels([LEGEND_LABEL[m] for m in methods], rotation=20, ha="right")
+        ax.set_title(title)
+        ax.set_ylim(bottom=0)
+        style.style_axis(ax)
+    axes[0].set_ylabel("Distance to optimum (normalized)")
+    fig.tight_layout()
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    style.save_csv(data, out_dir, "motivation_C_init_pool_optimum_distance")
+    return style.savefig(fig, out_dir, "motivation_C_init_pool_optimum_distance")
